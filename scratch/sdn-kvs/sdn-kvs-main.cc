@@ -111,9 +111,7 @@ main(int argc, char* argv[])
     of13Helper->InstallSwitch(switchNodes.Get(1), switchNodeDevices[1]);
     of13Helper->CreateOpenFlowChannels();
 
-    // TODO: Install server application
-    // UdpEchoServerHelper udpServerHelper(25565);
-    // udpServerHelper.Install(serverNodes);
+    // Install server application
     ServerHelper serverHelper(25565);
     serverHelper.Install(serverNodes);
     // TODO: Generate request table
