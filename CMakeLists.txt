@@ -59,8 +59,8 @@ option(NS3_FAST_LINKERS "Use Mold or LLD to speed up linking if available" ON)
 option(NS3_FETCH_OPTIONAL_COMPONENTS
        "Fetch Brite, Click and Openflow dependencies" OFF
 )
-option(NS3_GSL "Build with GSL support" ON)
-option(NS3_GTK3 "Build with GTK3 support" ON)
+option(NS3_GSL "Build with GSL support" OFF)
+option(NS3_GTK3 "Build with GTK3 support" OFF)
 option(NS3_LINK_TIME_OPTIMIZATION "Build with link-time optimization" OFF)
 option(NS3_MONOLIB
        "Build a single shared ns-3 library and link it against executables" OFF
@@ -77,13 +77,13 @@ option(NS3_PRECOMPILE_HEADERS
        "Precompile module headers to speed up compilation" ON
 )
 option(NS3_PYTHON_BINDINGS "Build ns-3 python bindings" OFF)
-option(NS3_SQLITE "Build with SQLite support" ON)
-option(NS3_EIGEN "Build with Eigen support" ON)
+option(NS3_SQLITE "Build with SQLite support" OFF)
+option(NS3_EIGEN "Build with Eigen support" OFF)
 option(NS3_STATIC "Build a static ns-3 library and link it against executables"
        OFF
 )
 option(NS3_VERBOSE "Print additional build system messages" OFF)
-option(NS3_VISUALIZER "Build visualizer module" ON)
+option(NS3_VISUALIZER "Build visualizer module" OFF)
 option(NS3_WARNINGS "Enable compiler warnings" ON)
 option(NS3_WARNINGS_AS_ERRORS
        "Treat warnings as errors. Requires NS3_WARNINGS=ON" ON

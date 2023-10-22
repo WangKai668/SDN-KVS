@@ -1,0 +1,49 @@
+#include "server-helper.h"
+
+#include <ns3/uinteger.h>
+
+ServerHelper::ServerHelper()
+{
+    m_factory.SetTypeId(Server::GetTypeId());
+}
+
+ServerHelper::ServerHelper(uint16_t port)
+{
+    m_factory.SetTypeId(Server::GetTypeId());
+    SetAttribute("Port", UintegerValue(port));
+}
+
+ServerHelper::ServerHelper(uint16_t port, uint32_t server_rate, uint32_t tqs)
+{
+    m_factory.SetTypeId(Server::GetTypeId());
+    SetAttribute("Port", UintegerValue(port));
+    SetAttribute("ServerRate", UintegerValue(server_rate));
+    SetAttribute("TQS", UintegerValue(tqs));
+}
+
+void
+ServerHelper::SetAttribute(std::string name, const AttributeValue& value)
+{
+    m_factory.Set(name, value);
+}
+
+ApplicationContainer
+ServerHelper::Install(NodeContainer c)
+{
+    ApplicationContainer apps;
+    for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i)
+    {
+        Ptr<Node> node = *i;
+
+        m_server = m_factory.Create<Server>();
+        node->AddApplication(m_server);
+        apps.Add(m_server);
+    }
+    return apps;
+}
+
+Ptr<Server>
+ServerHelper::GetServer()
+{
+    return m_server;
+}
