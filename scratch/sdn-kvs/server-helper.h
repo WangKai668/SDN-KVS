@@ -23,7 +23,7 @@ class ServerHelper
     ServerHelper();
 
     /**
-     * Create UdpServerHelper which will make life easier for people trying
+     * Create ServerHelper which will make life easier for people trying
      * to set up simulations with SDN-KVS server application.
      *
      * \param port The port the server will wait on for incoming packets
@@ -31,7 +31,7 @@ class ServerHelper
     ServerHelper(uint16_t port);
 
     /**
-     * Create UdpServerHelper which will make life easier for people trying
+     * Create ServerHelper which will make life easier for people trying
      * to set up simulations with SDN-KVS server application.
      *
      * \param port The port the server will wait on for incoming packets

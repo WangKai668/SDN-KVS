@@ -12,6 +12,8 @@ struct RequestTableEntry
     double st;           // Send time
     uint32_t src_client; // Source client id(start from 0)
     uint32_t dst_server; // Destination server id(start from 0)
+    std::string dst_ip;  // Destination server IPv4 address string
+    uint16_t dst_port;   // Destination server port
     uint32_t req_id;     // Request id that the packet belongs to
     uint32_t ks_siz;     // Keyset size
 };

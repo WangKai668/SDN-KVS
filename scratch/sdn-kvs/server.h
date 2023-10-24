@@ -66,8 +66,8 @@ class Server : public Application
     Ptr<Socket> m_socket6; //!< IPv6 Socket
     Address m_local;       //!< local multicast address
 
+    uint32_t m_server_rate; //!< Server handle rate. (Number of keys processed per millisecond)
     uint32_t m_queue_size;  //!< Current server queue size
-    uint32_t m_server_rate; //!< Server handle rate. (Number of keys processed per second)
     uint32_t m_tqs;         //!< Server TQS
 
     /// Callbacks for tracing the packet Rx events

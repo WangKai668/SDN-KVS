@@ -11,19 +11,15 @@ NS_OBJECT_ENSURE_REGISTERED(Controller);
 
 Controller::Controller()
 {
-    NS_LOG_FUNCTION(this);
 }
 
 Controller::~Controller()
 {
-    NS_LOG_FUNCTION(this);
 }
 
 void
 Controller::DoDispose()
 {
-    NS_LOG_FUNCTION(this);
-
     OFSwitch13Controller::DoDispose();
 }
 
@@ -50,8 +46,7 @@ Controller::GetTypeId()
 void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
-    NS_LOG_FUNCTION(this << swtch);
-
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
     ConfigureSwitch(swtch);
 }
 
@@ -72,12 +67,11 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
                            Ptr<const RemoteSwitch> swtch,
                            uint32_t xid)
 {
-    NS_LOG_FUNCTION(this << swtch << xid);
-
     enum ofp_packet_in_reason reason = msg->reason;
 
     char* msgStr = ofl_structs_match_to_string((struct ofl_match_header*)msg->match, nullptr);
-    NS_LOG_DEBUG("Packet in match: " << msgStr);
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Received Packet-In packet: "
+                                << msgStr << " from switch " << swtch->GetDpId());
     free(msgStr);
 
     if (reason == OFPR_ACTION)
@@ -97,8 +91,6 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
 void
 Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 {
-    NS_LOG_FUNCTION(this << swtch);
-
     // Get the switch datapath ID
     uint64_t swDpId = swtch->GetDpId();
 
@@ -173,7 +165,8 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 
     m_switchPortCnt[swDpId - 1] = port_cnt; // Store switch total port count
 
-    NS_LOG_UNCOND("Configure switch " << swDpId << " completed");
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch " << swDpId
+                                << " completed");
 }
 
 int
@@ -215,6 +208,10 @@ Controller::ForwardPacket(struct ofl_msg_packet_in* msg,
     }
 
     int ret = SendToSwitch(swtch, (struct ofl_msg_header*)&reply, xid);
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                << "] Sent Packet-Out packet: (buffer_id=" << reply.buffer_id
+                                << ", in_port=" << reply.in_port << ", out_port=" << action->port
+                                << ") to switch " << swtch->GetDpId());
     free(action);
     return ret;
 }

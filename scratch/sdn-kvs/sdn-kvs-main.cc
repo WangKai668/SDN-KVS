@@ -1,3 +1,4 @@
+#include "client-helper.h"
 #include "controller.h"
 #include "model.h"
 #include "server-helper.h"
@@ -19,17 +20,19 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-bool debug = true;                            // Enable DEBUG log
+bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
 double uti = 0.7;                             // Utilization
-double server_rate = 1.0;                     // Server handle keyset speed rate
-uint32_t server_tqs = 64;                     // Server TQS
-uint32_t client_num = 5;                      // The number of client node
-uint32_t server_num = 5;                      // The number of server node
-uint32_t key_num = 1000;   // The upper bound of the total number of keys(n keys = 1 keyset)
-uint32_t request_num = 30; // The upper bound of the total number of requests
+uint32_t simTime = 10;                        // Simulator running time(unit: second)
+uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
+uint16_t server_port = 25565; // Server listen port
+uint32_t server_tqs = 64;     // Server TQS
+uint32_t client_num = 5;      // The number of client node
+uint32_t server_num = 5;      // The number of server node
+uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t request_num = 30;    // The upper bound of the total number of requests
 
 /**
  * Global variable
@@ -175,8 +178,12 @@ poisson(double lambda)
     return pV;
 }
 
+/**
+ * Prebuild request table
+ * \param serverNodes Node container of server nodes. It is used to get IPv4 address from node.
+ */
 void
-init_request_table()
+init_request_table(NodeContainer& serverNodes)
 {
     std::vector<RequestTableEntry> vec; // Temporary vector to store entry
     for (uint32_t req_id = 1; req_id <= request_num; req_id++)
@@ -210,12 +217,18 @@ init_request_table()
         {
             // The server that this keyset data packet was sent to
             uint32_t server_id = generate_dst_server(is_add, hot_server_num);
+            // Get IPv4 address from server id
+            Ptr<Node> serverNode = serverNodes.Get(server_id);
+            std::stringstream ss;
+            ss << serverNode->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
 
             // Build request table entry
             RequestTableEntry entry;
             entry.st = 0.0; // Initialize it later
             entry.src_client = client_id;
             entry.dst_server = server_id;
+            entry.dst_ip = ss.str();
+            entry.dst_port = server_port;
             entry.req_id = req_id;
             entry.ks_siz = ks_siz;
 
@@ -238,7 +251,7 @@ init_request_table()
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
-        double t_mean = (1 / (server_rate * 1000)) * req_mean / (uti * double(server_num));
+        double t_mean = (1 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
         double r = 0;
         while (true)
         {
@@ -259,6 +272,13 @@ init_request_table()
         req_table[entry.src_client].push_back(entry);
     }
 
+    // Sort vector by send time
+    auto cmp = [](RequestTableEntry& entry1, RequestTableEntry& entry2) -> bool {
+        return entry1.st < entry2.st;
+    };
+    for (auto& [client_id, vec] : req_table)
+        std::sort(vec.begin(), vec.end(), cmp);
+
     // Print the request table
     NS_LOG_UNCOND("tot_key_num = " << tot_key_num << ", tot_request_num = " << tot_request_num
                                    << ", tot_ks_num = " << tot_ks_num);
@@ -268,8 +288,8 @@ init_request_table()
         {
             std::stringstream ss;
             ss << "[" << client_id << "] (st=" << entry.st << ", src_client=" << entry.src_client
-               << ", dst_server=" << entry.dst_server << ", req_id=" << entry.req_id
-               << ", ks_siz=" << entry.ks_siz << ")";
+               << ", dst_server=" << entry.dst_server << ", dst_ip=" << entry.dst_ip
+               << ", req_id=" << entry.req_id << ", ks_siz=" << entry.ks_siz << ")";
             NS_LOG_UNCOND(ss.str());
         }
     }
@@ -290,13 +310,10 @@ main(int argc, char* argv[])
         LogComponentEnable("OFSwitch13LearningController", LOG_LEVEL_ALL);
         LogComponentEnable("OFSwitch13Helper", LOG_LEVEL_ALL);
         LogComponentEnable("OFSwitch13InternalHelper", LOG_LEVEL_ALL);
-        LogComponentEnable("Controller", LOG_LEVEL_ALL);
-        LogComponentEnable("UdpEchoClientApplication", LOG_LEVEL_ALL);
-        LogComponentEnable("UdpEchoServerApplication", LOG_LEVEL_ALL);
-        LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
     }
-
-    init_request_table();
+    LogComponentEnable("Controller", LOG_LEVEL_ALL);
+    LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
+    LogComponentEnable("ClientApplication", LOG_LEVEL_ALL);
 
     // Enable checksum computations (required by OFSwitch13 module)
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
@@ -372,22 +389,27 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(25565, server_rate, server_tqs);
+    ServerHelper serverHelper(server_port, server_rate, server_tqs);
     serverHelper.Install(serverNodes);
-    // TODO: Generate request table
+    // Generate request table
+    NS_LOG_UNCOND("===== Prebuild request table =====");
+    init_request_table(serverNodes);
     // TODO: Install client application
-    for (uint32_t i = 0; i < server_num; i++)
-    {
-        // assert that client_num == server_num
-        Ptr<Node> serverNode = serverNodes.Get(i);
-        Ptr<Ipv4> ipp = serverNode->GetObject<Ipv4>();
-        Address target = ipp->GetAddress(1, 0).GetLocal().ConvertTo();
-        UdpEchoClientHelper udpClientHelper(target, 25565);
-        // udpClientHelper.SetAttribute("MaxPackets", UintegerValue(2));
-        udpClientHelper.Install(clientNodes.Get(i));
-    }
+    ClientHelper clientHelper(req_table);
+    clientHelper.Install(clientNodes);
+    // for (uint32_t i = 0; i < server_num; i++)
+    // {
+    //     // assert that client_num == server_num
+    //     Ptr<Node> serverNode = serverNodes.Get(i);
+    //     Ptr<Ipv4> ipp = serverNode->GetObject<Ipv4>();
+    //     Address target = ipp->GetAddress(1, 0).GetLocal().ConvertTo();
+    //     UdpEchoClientHelper udpClientHelper(target, server_port);
+    //     // udpClientHelper.SetAttribute("MaxPackets", UintegerValue(2));
+    //     udpClientHelper.Install(clientNodes.Get(i));
+    // }
 
     // Run the simulation
+    Simulator::Stop(Seconds(simTime));
     Simulator::Run();
     Simulator::Destroy();
 
