@@ -25,14 +25,14 @@ bool ifZipfian = true;                        // Whether there is a hotspot serv
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
 double uti = 0.7;                             // Utilization
-uint32_t simTime = 10;                        // Simulator running time(unit: second)
+uint32_t simTime = 100;                       // Simulator running time(unit: second)
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
 uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
 uint32_t client_num = 5;      // The number of client node
 uint32_t server_num = 5;      // The number of server node
-uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
-uint32_t request_num = 30;    // The upper bound of the total number of requests
+uint32_t key_num = 100000;    // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t request_num = 100;   // The upper bound of the total number of requests
 
 /**
  * Global variable
@@ -394,19 +394,9 @@ main(int argc, char* argv[])
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
     init_request_table(serverNodes);
-    // TODO: Install client application
+    // Install client application
     ClientHelper clientHelper(req_table);
     clientHelper.Install(clientNodes);
-    // for (uint32_t i = 0; i < server_num; i++)
-    // {
-    //     // assert that client_num == server_num
-    //     Ptr<Node> serverNode = serverNodes.Get(i);
-    //     Ptr<Ipv4> ipp = serverNode->GetObject<Ipv4>();
-    //     Address target = ipp->GetAddress(1, 0).GetLocal().ConvertTo();
-    //     UdpEchoClientHelper udpClientHelper(target, server_port);
-    //     // udpClientHelper.SetAttribute("MaxPackets", UintegerValue(2));
-    //     udpClientHelper.Install(clientNodes.Get(i));
-    // }
 
     // Run the simulation
     Simulator::Stop(Seconds(simTime));

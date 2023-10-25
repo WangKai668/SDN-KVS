@@ -76,7 +76,27 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
 
     if (reason == OFPR_ACTION)
     {
-        ForwardPacket(msg, swtch, xid);
+        Ptr<Packet> packet = Create<Packet>(msg->data, msg->data_length); // Copy buffer to packet
+        EthernetHeader ethHeader;
+        Ipv4Header ipHeader;
+        UdpHeader udpHeader;
+        SdnKvsHeader sdnKvsHeader;
+        // Parse header
+        packet->RemoveHeader(ethHeader);
+        packet->RemoveHeader(ipHeader);
+        packet->RemoveHeader(udpHeader);
+        packet->RemoveHeader(sdnKvsHeader);
+
+        // Get source IP address
+        Ipv4Address srcIp = ipHeader.GetSource();
+        std::stringstream ss;
+        ss << srcIp;
+        // If the source IP comes from the client, the controller will schedule.
+        // Else do flow table modification.
+        if (m_ipToClient.count(ss.str()))
+            DoSchedule(sdnKvsHeader, msg, swtch, xid);
+        else if (m_ipToServer.count(ss.str()))
+            DoFlowModify(sdnKvsHeader, msg, swtch, xid);
     }
     else
     {
@@ -144,7 +164,7 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
             // Set a flow entry with a higher priority so that
             // all data packets sent from the server node are sent to the controller.
             ss << "flow-mod cmd=add,table=0,prio=200 "
-               << "eth_type=0x0800,ip_src=" << ip_dst << " apply:output=ctrl";
+               << "eth_type=0x0800,ip_src=" << ip_dst << " apply:output=ctrl:128";
             DpctlExecute(swDpId, ss.str());
         }
 
@@ -167,6 +187,72 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch " << swDpId
                                 << " completed");
+}
+
+void
+Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
+                       struct ofl_msg_packet_in* msg,
+                       Ptr<const RemoteSwitch> swtch,
+                       uint32_t xid)
+{
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet");
+    ForwardPacket(msg, swtch, xid);
+}
+
+void
+Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
+                         struct ofl_msg_packet_in* msg,
+                         Ptr<const RemoteSwitch> swtch,
+                         uint32_t xid)
+{
+    if (sdnKvsHeader.GetHeavy() == 1)
+    {
+        std::stringstream ss;
+        // Get the switch datapath ID
+        uint64_t swDpId = swtch->GetDpId();
+        // Get server IP address
+        Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
+        ss << serverIp;
+        std::string serverIp_str = ss.str();
+
+        // The server is overloaded. Modify the flow table to make each packet
+        // sent from the client to be redirected to the controller.
+        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server "
+                                    << m_ipToServer[serverIp_str] << "(" << serverIp_str
+                                    << ") is overloaded. Modify flow table for switch " << swDpId);
+
+        ss.str(""); // Clear string stream
+        ss << "flow-mod cmd=mod,table=0,prio=100 "
+           << "eth_type=0x0800,ip_dst=" << serverIp_str << " apply:output=ctrl:128";
+        DpctlExecute(swDpId, ss.str());
+
+        // Set timer to undo modification.
+        Time dt =
+            Seconds(1.0 * sdnKvsHeader.GetQueueSiz() / (1000.0 * sdnKvsHeader.GetServerRate()));
+        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
+                                    << " later will undo the modification of the flow table");
+        Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
+    }
+    // Forward packet to client
+    ForwardPacket(msg, swtch, xid);
+}
+
+void
+Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
+{
+    uint32_t server_id = m_ipToServer[server_ip];
+    int32_t port = GetSwitchPortByServerId(switch_id, server_id);
+    if (port == -1)
+        return; // Should be unreachable
+
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                << "] Undo the modification of the flow table(switch_id="
+                                << switch_id << ", server_ip=" << server_ip << ")");
+
+    std::stringstream ss;
+    ss << "flow-mod cmd=mod,table=0,prio=100 "
+       << "eth_type=0x0800,ip_dst=" << server_ip << " apply:nw_dec,output=" << port;
+    DpctlExecute(switch_id, ss.str());
 }
 
 int

@@ -1,6 +1,8 @@
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
 
+#include "sdn-kvs-header.h"
+
 #include <ns3/ofswitch13-module.h>
 
 using namespace ns3;
@@ -49,6 +51,38 @@ class Controller : public OFSwitch13Controller
      * \param swtch The switch information.
      */
     void ConfigureSwitch(Ptr<const RemoteSwitch> swtch);
+
+    /**
+     * Do packet schedule when a client packet is sent to an overloaded server.
+     * After scheduling, each packet will have a new forward time to the target server,
+     * and the old forward time event will be canceled.
+     * \param sdnKvsHeader SDN-KVS header
+     * \param msg The OpenFlow received message.
+     * \param swtch The remote switch metadata.
+     * \param xid The transaction id from the request message.
+     */
+    void DoSchedule(SdnKvsHeader& sdnKvsHeader,
+                    struct ofl_msg_packet_in* msg,
+                    Ptr<const RemoteSwitch> swtch,
+                    uint32_t xid);
+
+    /**
+     * Check the heavy field in the header and modify the flow table when heavy is set to 1.
+     * \param sdnKvsHeader SDN-KVS header
+     * \param msg The OpenFlow received message.
+     * \param swtch The remote switch metadata.
+     * \param xid The transaction id from the request message.
+     */
+    void DoFlowModify(SdnKvsHeader& sdnKvsHeader,
+                      struct ofl_msg_packet_in* msg,
+                      Ptr<const RemoteSwitch> swtch,
+                      uint32_t xid);
+    /**
+     * Undo the modification of the flow table.
+     * \param switch_id Target switch id.
+     * \param server_ip Destination server IPv4 address string.
+     */
+    void UndoFlowModify(uint32_t switch_id, std::string server_ip);
 
     /**
      * Get Ipv4Address string from ns3 node object.
