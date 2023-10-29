@@ -5,6 +5,7 @@
 
 #include <ns3/ofswitch13-module.h>
 
+#include <stack>
 using namespace ns3;
 
 /**
@@ -42,6 +43,23 @@ class Controller : public OFSwitch13Controller
     void AddToClientNodeMap(uint32_t client_id, Ptr<Node> client_node);
 
   protected:
+    // save
+    struct PacketInput
+    {
+        SdnKvsHeader sdnKvsHeader;
+        struct ofl_msg_packet_in* msg;
+        Ptr<const RemoteSwitch> swtch;
+        uint32_t xid;
+        Time arrive_time;
+        Address from;
+    };
+
+    struct SendEvent
+    {
+        EventId eventId;
+        uint32_t serverId;
+    };
+
     // Inherited from OFSwitch13Controller
     void HandshakeSuccessful(Ptr<const RemoteSwitch> swtch) override;
 
@@ -135,13 +153,30 @@ class Controller : public OFSwitch13Controller
     int ForwardPacket(struct ofl_msg_packet_in* msg, Ptr<const RemoteSwitch> swtch, uint32_t xid);
 
     /**
+     * Remove packet from m_vecPacket,and remove corresponding event from eventlist
+     * \param msg The OpenFlow received message.
+     * \param swtch The remote switch metadata.
+     * \param xid The transaction id from the request message.
+     */
+    void RemovePacketAndForward(SdnKvsHeader& sdnKvsHeader,
+                                struct ofl_msg_packet_in* msg,
+                                Ptr<const RemoteSwitch> swtch,
+                                uint32_t xid);
+
+    /**
      * Controller has the whole topology of network.
      */
-    std::map<uint32_t, Ptr<Node>> m_serverNodes;  //!< Map<server id, server node>
-    std::map<uint32_t, Ptr<Node>> m_clientNodes;  //!< Map<client id, client node>
-    std::map<std::string, uint32_t> m_ipToServer; //!< Map<ipv4, server id>
-    std::map<std::string, uint32_t> m_ipToClient; //!< Map<ipv4, client id>
-    uint32_t m_switchPortCnt[2] = {0, 0};         //!< Switch total port count
+    std::map<uint32_t, Ptr<Node>> m_serverNodes;        //!< Map<server id, server node>
+    std::map<uint32_t, Ptr<Node>> m_clientNodes;        //!< Map<client id, client node>
+    std::map<std::string, uint32_t> m_ipToServer;       //!< Map<ipv4, server id>
+    std::map<std::string, uint32_t> m_ipToClient;       //!< Map<ipv4, client id>
+    std::map<uint32_t, int64_t> m_serverHeavyQueueSize; // Map<server id, server heavy queue size>
+    std::map<uint32_t, int64_t> m_serverHeavyTime;      // Map<server id, server heavy time>
+    std::map<uint32_t, uint64_t> m_serverRateList;      // Map<server id, server rate>
+    PacketInput packet_input;
+    std::vector<std::vector<PacketInput>> m_vecPacket; // packet in controller for schedule
+    std::vector<SendEvent> m_sendEventList{};
+    uint32_t m_switchPortCnt[2] = {0, 0}; //!< Switch total port count
 };
 
 #endif
