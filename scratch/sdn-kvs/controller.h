@@ -173,9 +173,8 @@ class Controller : public OFSwitch13Controller
     std::map<uint32_t, int64_t> m_serverHeavyQueueSize; // Map<server id, server heavy queue size>
     std::map<uint32_t, int64_t> m_serverHeavyTime;      // Map<server id, server heavy time>
     std::map<uint32_t, uint64_t> m_serverRateList;      // Map<server id, server rate>
-    PacketInput packet_input;
-    std::vector<std::vector<PacketInput>> m_vecPacket; // packet in controller for schedule
-    std::vector<SendEvent> m_sendEventList{};
+    std::map<uint32_t, std::vector<PacketInput>> m_vecPacket; // Packet in controller for schedule
+    std::vector<SendEvent> m_sendEventList;
     uint32_t m_switchPortCnt[2] = {0, 0}; //!< Switch total port count
 };
 
