@@ -166,16 +166,21 @@ class Controller : public OFSwitch13Controller
     /**
      * Controller has the whole topology of network.
      */
-    std::map<uint32_t, Ptr<Node>> m_serverNodes;        //!< Map<server id, server node>
-    std::map<uint32_t, Ptr<Node>> m_clientNodes;        //!< Map<client id, client node>
-    std::map<std::string, uint32_t> m_ipToServer;       //!< Map<ipv4, server id>
-    std::map<std::string, uint32_t> m_ipToClient;       //!< Map<ipv4, client id>
-    std::map<uint32_t, int64_t> m_serverHeavyQueueSize; // Map<server id, server heavy queue size>
-    std::map<uint32_t, int64_t> m_serverHeavyTime;      // Map<server id, server heavy time>
-    std::map<uint32_t, uint64_t> m_serverRateList;      // Map<server id, server rate>
-    std::map<uint32_t, std::vector<PacketInput>> m_vecPacket; // Packet in controller for schedule
-    std::vector<SendEvent> m_sendEventList;
-    uint32_t m_switchPortCnt[2] = {0, 0}; //!< Switch total port count
+    std::map<uint32_t, Ptr<Node>> m_serverNodes;  //!< Map<server id, server node>
+    std::map<uint32_t, Ptr<Node>> m_clientNodes;  //!< Map<client id, client node>
+    std::map<std::string, uint32_t> m_ipToServer; //!< Map<ipv4, server id>
+    std::map<std::string, uint32_t> m_ipToClient; //!< Map<ipv4, client id>
+    uint32_t m_switchPortCnt[2] = {0, 0};         //!< Switch total port count
+
+    /**
+     * These variables are used for scheduling.
+     */
+    std::map<uint32_t, uint32_t> m_heavyServer;         //!< Map<server id, packet count>
+    std::map<uint32_t, int64_t> m_serverHeavyQueueSize; //!< Map<server id, server heavy queue size>
+    std::map<uint32_t, int64_t> m_serverHeavyTime;      //!< Map<server id, server heavy time>
+    std::map<uint32_t, uint64_t> m_serverRateList;      //!< Map<server id, server rate>
+    std::map<uint32_t, std::vector<PacketInput>> m_vecPacket; //!< Packet in controller for schedule
+    std::vector<SendEvent> m_sendEventList;                   //!< Event list
 };
 
 #endif

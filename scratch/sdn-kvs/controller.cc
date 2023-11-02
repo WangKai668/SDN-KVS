@@ -47,6 +47,10 @@ void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
+    // Initialize packet vector
+    uint32_t server_num = m_serverNodes.size();
+    for (uint32_t i = 0; i < server_num; i++)
+        m_vecPacket[i] = std::vector<PacketInput>();
     ConfigureSwitch(swtch);
 }
 
@@ -93,6 +97,7 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
         ss << srcIp;
         // If the source IP comes from the client, the controller will schedule.
         // Else do flow table modification.
+        // Note: Remember to free the message when everything is ok
         if (m_ipToClient.count(ss.str()))
             DoSchedule(sdnKvsHeader, msg, swtch, xid);
         else if (m_ipToServer.count(ss.str()))
@@ -101,10 +106,10 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
     else
     {
         NS_LOG_WARN("This controller can't handle the packet. Unexpected Packet-In reason.");
+        // All handlers must free the message when everything is ok
+        ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
     }
 
-    // All handlers must free the message when everything is ok
-    ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
     return 0;
 }
 
@@ -198,9 +203,6 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
                                 << "] Schedule client packet, reqid " << sdnKvsHeader.GetReqId()
                                 << " ksSize " << sdnKvsHeader.GetKsSiz());
-    uint32_t server_num = m_serverNodes.size();
-    for (uint32_t i = 0; i < server_num; i++)
-        m_vecPacket[i] = std::vector<PacketInput>();
     // Get server IP address
     std::stringstream ss;
     Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
@@ -217,21 +219,29 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     m_vecPacket[m_ipToServer[ss.str()]].push_back(packet_input);
 
     // LRPT_last schedule
-    bool isScheduling = true;
+    std::set<uint32_t> heavyServerSet;
+    for (const auto& [server_id, cnt] : m_heavyServer)
+    {
+        if (cnt <= 0)
+            continue;
+        heavyServerSet.insert(server_id);
+    }
+    bool isScheduling = !heavyServerSet.empty(); // Schedule when heavy server is not empty
     double weight_max = 2.0;
     std::map<uint32_t, double> weightOfRequest;   // Map<server id, request weight>
     std::map<uint32_t, uint64_t> keysetTotalSize; // Map<server id, total size>
     std::map<uint32_t, int64_t> currentQueueSize; // Map<server id ,current queue size>
     std::map<uint32_t, double> waitTime;          // Map<reqid, wait time>
     std::map<uint32_t, std::stack<PacketInput>> stackPacket;
-    // init tmp packet for schedule
+    // Init tmp packet for schedule
     std::map<uint32_t, std::vector<PacketInput>> scheduleTmpPacket(m_vecPacket);
 
-    // update heavy server queue size
-    for (const auto& [server_id, quque_size] : m_serverHeavyQueueSize)
+    // Update heavy server queue size
+    for (uint32_t server_id : heavyServerSet)
     {
+        int64_t queue_size = m_serverHeavyQueueSize[server_id];
         currentQueueSize[server_id] =
-            quque_size - (int64_t)m_serverRateList[server_id] *
+            queue_size - (int64_t)m_serverRateList[server_id] *
                              (Simulator::Now().GetMilliSeconds() - m_serverHeavyTime[server_id]);
         if (currentQueueSize[server_id] < 0)
             currentQueueSize[server_id] = 0;
@@ -251,14 +261,19 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         }
     }
 
-    while (isScheduling == true)
+    while (isScheduling)
     {
         // Find the bottleneck server
-        std::vector<uint32_t> keysetPlusQsz(server_num);
-        for (uint32_t i = 0; i < server_num && keysetTotalSize[i] != 0; i++)
-            keysetPlusQsz[i] = (keysetTotalSize[i] + currentQueueSize[i]) / m_serverRateList[i];
-        uint32_t maxServer =
-            max_element(keysetPlusQsz.begin(), keysetPlusQsz.end()) - keysetPlusQsz.begin();
+        uint32_t keysetPlusQsz = 0, maxServer = 0;
+        for (uint32_t server_id : heavyServerSet)
+        {
+            uint32_t val = (keysetTotalSize[server_id] + currentQueueSize[server_id]) /
+                           m_serverRateList[server_id];
+            if (val < keysetPlusQsz)
+                continue;
+            keysetPlusQsz = val;
+            maxServer = server_id;
+        }
 
         // Find the request with the largest weight
         double largestWeight = INT32_MIN;
@@ -342,8 +357,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             st.pop();
         }
     }
-
-    // ForwardPacket(msg, swtch, xid);
+    // Do not free the message. Message will be free in RemovePacketAndForward function
 }
 
 void
@@ -361,22 +375,23 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
         ss << serverIp;
         std::string serverIp_str = ss.str();
+        uint32_t server_id = m_ipToServer[serverIp_str];
+        if (!m_heavyServer.count(server_id))
+            m_heavyServer[server_id] = 0;
+        m_heavyServer[server_id] += 1; // This server is overloaded. Count this packet to the server
 
-        // The server is overloaded. Record the overload time, queue length during overload, and
-        // server service rate after server overload
-        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::MS) << "] Server "
-                                    << m_ipToServer[serverIp_str] << " record QueueSiz "
-                                    << sdnKvsHeader.GetQueueSiz() << " HeavyTime "
-                                    << Simulator::Now().GetMilliSeconds() << " ServerRate "
-                                    << sdnKvsHeader.GetServerRate());
-        m_serverHeavyQueueSize[m_ipToServer[serverIp_str]] = sdnKvsHeader.GetQueueSiz();
-        m_serverHeavyTime[m_ipToServer[serverIp_str]] = Simulator::Now().GetMilliSeconds();
-        m_serverRateList[m_ipToServer[serverIp_str]] = sdnKvsHeader.GetServerRate();
+        // Record the overload time, queue size and server service rate when overloaded
+        m_serverHeavyQueueSize[server_id] = sdnKvsHeader.GetQueueSiz();
+        m_serverHeavyTime[server_id] = Simulator::Now().GetMilliSeconds();
+        m_serverRateList[server_id] = sdnKvsHeader.GetServerRate();
 
         // The server is overloaded. Modify the flow table to make each packet
         // sent from the client to be redirected to the controller.
-        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server "
-                                    << m_ipToServer[serverIp_str] << "(" << serverIp_str
+        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server " << server_id
+                                    << "(ip=" << serverIp_str
+                                    << ", queue_siz=" << m_serverHeavyQueueSize[server_id]
+                                    << ", heavy_time=" << m_serverHeavyTime[server_id]
+                                    << ", server_rate=" << m_serverRateList[server_id]
                                     << ") is overloaded. Modify flow table for switch " << swDpId);
         ss.str(""); // Clear string stream
         ss << "flow-mod cmd=mod,table=0,prio=100 "
@@ -392,6 +407,8 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
     }
     // Forward packet to client
     ForwardPacket(msg, swtch, xid);
+    // Free message after forwarding packet
+    ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
 }
 
 void
@@ -428,6 +445,15 @@ Controller::RemovePacketAndForward(SdnKvsHeader& sdnKvsHeader,
         vec.erase(it, vec.end());
     }
     ForwardPacket(msg, swtch, xid);
+
+    Address to = Address(ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match));
+    std::stringstream ss;
+    ss << to;
+    uint32_t server_id = m_ipToServer[ss.str()];
+    m_heavyServer[server_id] -= 1; // Reduce this packet count
+
+    // Free message after forwarding packet
+    ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
 }
 
 int
