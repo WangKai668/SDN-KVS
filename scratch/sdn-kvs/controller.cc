@@ -52,6 +52,7 @@ Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
     for (uint32_t i = 0; i < server_num; i++)
     {
         ScheduleContext context;
+        context.is_heavy = false;
         context.lastScheduleTime = Simulator::Now();
         context.queue_size = 0;
         context.server_rate = 0;
@@ -229,7 +230,10 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         uint32_t target = 0;
         for (const auto& req_id : req_set)
         {
-            double weight = req_weight[req_id] / SumKeyset(req_id, sid);
+            uint32_t kv = SumKeyset(req_id, sid);
+            if (kv == 0)
+                continue;
+            double weight = req_weight[req_id] / kv;
             NS_LOG_UNCOND("DEBUG: " << weight << " " << sid << " " << req_id << " "
                                     << req_weight[req_id] << " " << SumKeyset(req_id, sid));
             if (weight > mx)
@@ -243,15 +247,12 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
                 continue;
             uint32_t v1 = SumKeyset(req_id, sid);
             uint32_t v2 = SumKeyset(target, sid);
-            if (v1 == 0 && v2 == 0)
-                continue;
             weight -= (req_weight[target] * v1 / v2);
         }
         req_weight[target] = mx;
         ret.push_back(target);
         req_set.erase(target);
     }
-    std::reverse(ret.begin(), ret.end());
 
     ss.str("");
     ss << "[";
@@ -262,64 +263,6 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
                                 << "] Schedule completed(size=" << ret.size() << "): " << ss.str());
 
     return ret;
-    // while (isScheduling)
-    // {
-    //     // Find the bottleneck server
-    //     uint32_t keysetPlusQsz = 0, maxServer = 0;
-    //     for (uint32_t server_id : heavyServerSet)
-    //     {
-    //         uint32_t val = (keysetTotalSize[server_id] + currentQueueSize[server_id]) /
-    //                        m_serverRateList[server_id];
-    //         if (val < keysetPlusQsz)
-    //             continue;
-    //         keysetPlusQsz = val;
-    //         maxServer = server_id;
-    //     }
-
-    //     // Find the request with the largest weight
-    //     double largestWeight = INT32_MIN;
-    //     uint32_t largestWeightReqId = 0;
-    //     for (const auto& packet : scheduleTmpPacket[maxServer])
-    //     {
-    //         uint32_t req_id = packet.sdnKvsHeader.GetReqId();
-    //         double val = weightOfRequest[req_id] / packet.sdnKvsHeader.GetKsSiz(); // 初始化
-    //         if (val <= largestWeight)
-    //             continue;
-    //         largestWeight = val;
-    //         largestWeightReqId = req_id;
-    //     }
-
-    //     // Update request's weight
-    //     auto cond = [largestWeightReqId](const PacketInput& packet) {
-    //         return packet.sdnKvsHeader.GetReqId() == largestWeightReqId;
-    //     };
-    //     PacketInput target_packet = *std::find_if(scheduleTmpPacket[maxServer].begin(),
-    //                                               scheduleTmpPacket[maxServer].end(),
-    //                                               cond);
-    //     uint32_t bottle_ks = target_packet.sdnKvsHeader.GetKsSiz();
-    //     for (const auto& packet : scheduleTmpPacket[maxServer])
-    //         if (packet.sdnKvsHeader.GetReqId() != largestWeightReqId)
-    //             weightOfRequest[packet.sdnKvsHeader.GetReqId()] -=
-    //                 weightOfRequest[largestWeightReqId] * packet.sdnKvsHeader.GetKsSiz() /
-    //                 bottle_ks;
-
-    //     // move request to stack
-    //     for (auto& [server_id, vec] : scheduleTmpPacket)
-    //     {
-    //         if (currentQueueSize[server_id] == 0)
-    //             break;
-    //         auto erase_it = std::remove_if(vec.begin(), vec.end(), cond);
-    //         for (auto it = erase_it; it != vec.end(); it++)
-    //         {
-    //             stackPacket[server_id].push(*it);
-    //             keysetTotalSize[server_id] -= it->sdnKvsHeader.GetKsSiz();
-    //         }
-    //         vec.erase(erase_it, vec.end());
-    //     }
-    //     weightOfRequest.erase(largestWeightReqId);
-    //     if (weightOfRequest.size() == 0)
-    //         isScheduling = false;
-    // }
 }
 
 void
@@ -354,7 +297,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     std::map<uint32_t, int64_t> req_wait_time; // Map<request id, max wait time>
     for (auto& [server_id, ctx] : m_scheduleContexts)
     {
-        if (ctx.schedulePackets.empty()) // Not overloaded
+        if (!ctx.is_heavy) // Not overloaded
             continue;
         int64_t dt = Simulator::Now().GetMilliSeconds() - ctx.lastScheduleTime.GetMilliSeconds();
         if (dt >= 1.00) // 1ms is the minimum delta time.
@@ -454,6 +397,7 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         context.queue_size = sdnKvsHeader.GetQueueSiz();
         context.server_rate = sdnKvsHeader.GetServerRate();
         context.lastScheduleTime = Simulator::Now();
+        context.is_heavy = true;
 
         // The server is overloaded. Modify the flow table to make each packet
         // sent from the client to be redirected to the controller.
@@ -496,6 +440,8 @@ void
 Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
 {
     uint32_t server_id = m_ipToServer[server_ip];
+    ScheduleContext& ctx = m_scheduleContexts[server_id];
+    ctx.is_heavy = false;
     int32_t port = GetSwitchPortByServerId(switch_id, server_id);
     if (port == -1)
         return; // Should be unreachable
@@ -685,15 +631,18 @@ Controller::FindBottleneckServer(std::set<uint32_t>& req_set)
 {
     // Assert that there is at least one server overloaded and can always get the answer
     // when this function is called.
-    uint32_t mx = 0, ret = 0;
+    double mx = 0;
+    uint32_t ret = 0;
     uint32_t server_num = m_serverNodes.size();
     for (uint32_t i = 0; i < server_num; i++)
     {
         const ScheduleContext& ctx = m_scheduleContexts[i];
-        if (ctx.schedulePackets.empty()) // This server is not overloaded
+        uint32_t kv = SumKeyset(req_set, i);
+        // This server is not overloaded or no packets
+        if (!ctx.is_heavy || kv == 0)
             continue;
         // The weight computed here is always greater than or equal to 0
-        uint32_t weight = SumKeyset(req_set, i) + ctx.queue_size;
+        double weight = (kv + ctx.queue_size) * 1.0 / ctx.server_rate;
         if (weight < mx)
             continue;
         mx = weight, ret = i;

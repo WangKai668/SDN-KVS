@@ -78,6 +78,7 @@ class Controller : public OFSwitch13Controller
      */
     struct ScheduleContext
     {
+        bool is_heavy;         // Whether this server is overloaded or not
         Time lastScheduleTime; // Last time for scheduling this server, or overloaded time if not
                                // scheduled yet. Set after each scheduling.
         uint32_t queue_size;   // Current server queue size. Computed in each scheduling.
