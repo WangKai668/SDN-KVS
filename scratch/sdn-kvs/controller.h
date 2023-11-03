@@ -43,27 +43,52 @@ class Controller : public OFSwitch13Controller
     void AddToClientNodeMap(uint32_t client_id, Ptr<Node> client_node);
 
   protected:
-    // save
-    struct PacketInput
-    {
-        SdnKvsHeader sdnKvsHeader;
-        struct ofl_msg_packet_in* msg;
-        Ptr<const RemoteSwitch> swtch;
-        uint32_t xid;
-        Time arrive_time;
-        Address from;
-    };
-
-    struct SendEvent
-    {
-        EventId eventId;
-        uint32_t serverId;
-    };
-
     // Inherited from OFSwitch13Controller
     void HandshakeSuccessful(Ptr<const RemoteSwitch> swtch) override;
 
   private:
+    /**
+     * Structure of packet waiting for forwarding to the server.
+     * It is saved temporarily in the scheduling context.
+     */
+    struct SchedulePacket
+    {
+        uint32_t id;                   // Identify the schedule packet
+        SdnKvsHeader sdnKvsHeader;     // SDN-KVS header
+        struct ofl_msg_packet_in* msg; // The OpenFlow received message
+        Ptr<const RemoteSwitch> swtch; // The remote switch metadata
+        uint32_t xid;                  // The transaction id from the request message
+        EventId eventId;               // Event ID for sending this packet
+        Time arriveTime;               // Arrive time of this packet
+        uint32_t dstServerId;          // Destination server id
+    };
+
+    /**
+     * Structure of request waiting for scheduling.
+     * It is the minimum unit of scheduling.
+     */
+    struct ScheduleRequest
+    {
+        uint32_t req_id; // Request ID
+        double weight;   // Sorted by this weight. Computed in scheduling.
+    };
+
+    /**
+     * Each server has a schedule context.
+     */
+    struct ScheduleContext
+    {
+        Time lastScheduleTime; // Last time for scheduling this server, or overloaded time if not
+                               // scheduled yet. Set after each scheduling.
+        uint32_t queue_size;   // Current server queue size. Computed in each scheduling.
+        uint32_t server_rate;  // Server handle rate. (Number of keys processed per millisecond)
+        // Waiting for the sending packets list.
+        // It means the server is not overloaded now if empty.
+        std::vector<SchedulePacket> schedulePackets;
+        // Map<switch id, undo flow table modification event id>
+        std::map<uint64_t, EventId> undoFlowEvents;
+    };
+
     /**
      * Configure the switch.
      * \param swtch The switch information.
@@ -153,15 +178,16 @@ class Controller : public OFSwitch13Controller
     int ForwardPacket(struct ofl_msg_packet_in* msg, Ptr<const RemoteSwitch> swtch, uint32_t xid);
 
     /**
-     * Remove packet from m_vecPacket,and remove corresponding event from eventlist
-     * \param msg The OpenFlow received message.
-     * \param swtch The remote switch metadata.
-     * \param xid The transaction id from the request message.
+     * Remove packet from controller and forward it to the server
+     * \param pkt Packet received from client.
      */
-    void RemovePacketAndForward(SdnKvsHeader& sdnKvsHeader,
-                                struct ofl_msg_packet_in* msg,
-                                Ptr<const RemoteSwitch> swtch,
-                                uint32_t xid);
+    void RemovePacketAndForward(SchedulePacket pkt);
+
+    /**
+     * Do BP-LPT algorithm. This function will sort the request list.
+     * \param scheduleRequests Request list waiting for scheduling.
+     */
+    void BP_LPT(std::vector<ScheduleRequest>& scheduleRequests);
 
     /**
      * Controller has the whole topology of network.
@@ -175,12 +201,8 @@ class Controller : public OFSwitch13Controller
     /**
      * These variables are used for scheduling.
      */
-    std::map<uint32_t, uint32_t> m_heavyServer;         //!< Map<server id, packet count>
-    std::map<uint32_t, int64_t> m_serverHeavyQueueSize; //!< Map<server id, server heavy queue size>
-    std::map<uint32_t, int64_t> m_serverHeavyTime;      //!< Map<server id, server heavy time>
-    std::map<uint32_t, uint64_t> m_serverRateList;      //!< Map<server id, server rate>
-    std::map<uint32_t, std::vector<PacketInput>> m_vecPacket; //!< Packet in controller for schedule
-    std::vector<SendEvent> m_sendEventList;                   //!< Event list
+    std::map<uint32_t, ScheduleContext> m_scheduleContexts; //!< Map<server id, schedule context>
+    uint64_t m_idCnt = 0;                                   //!< For generating schedule packet ID
 };
 
 #endif

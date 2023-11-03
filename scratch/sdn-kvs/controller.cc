@@ -47,10 +47,19 @@ void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
-    // Initialize packet vector
+    // Initialize the schedule context
     uint32_t server_num = m_serverNodes.size();
     for (uint32_t i = 0; i < server_num; i++)
-        m_vecPacket[i] = std::vector<PacketInput>();
+    {
+        ScheduleContext context;
+        context.lastScheduleTime = Simulator::Now();
+        context.queue_size = 0;
+        context.server_rate = 0;
+        context.schedulePackets = std::vector<SchedulePacket>();
+        context.undoFlowEvents[1] = EventId();
+        context.undoFlowEvents[2] = EventId();
+        m_scheduleContexts[i] = context;
+    }
     ConfigureSwitch(swtch);
 }
 
@@ -195,169 +204,183 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 }
 
 void
+Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (const auto& req : scheduleRequests)
+        ss << "(req_id=" << req.req_id << ", weight=" << req.weight << ")";
+    ss << "]";
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Do BP-LPT for array(size="
+                                << scheduleRequests.size() << "): " << ss.str());
+    // while (isScheduling)
+    // {
+    //     // Find the bottleneck server
+    //     uint32_t keysetPlusQsz = 0, maxServer = 0;
+    //     for (uint32_t server_id : heavyServerSet)
+    //     {
+    //         uint32_t val = (keysetTotalSize[server_id] + currentQueueSize[server_id]) /
+    //                        m_serverRateList[server_id];
+    //         if (val < keysetPlusQsz)
+    //             continue;
+    //         keysetPlusQsz = val;
+    //         maxServer = server_id;
+    //     }
+
+    //     // Find the request with the largest weight
+    //     double largestWeight = INT32_MIN;
+    //     uint32_t largestWeightReqId = 0;
+    //     for (const auto& packet : scheduleTmpPacket[maxServer])
+    //     {
+    //         uint32_t req_id = packet.sdnKvsHeader.GetReqId();
+    //         double val = weightOfRequest[req_id] / packet.sdnKvsHeader.GetKsSiz(); // 初始化
+    //         if (val <= largestWeight)
+    //             continue;
+    //         largestWeight = val;
+    //         largestWeightReqId = req_id;
+    //     }
+
+    //     // Update request's weight
+    //     auto cond = [largestWeightReqId](const PacketInput& packet) {
+    //         return packet.sdnKvsHeader.GetReqId() == largestWeightReqId;
+    //     };
+    //     PacketInput target_packet = *std::find_if(scheduleTmpPacket[maxServer].begin(),
+    //                                               scheduleTmpPacket[maxServer].end(),
+    //                                               cond);
+    //     uint32_t bottle_ks = target_packet.sdnKvsHeader.GetKsSiz();
+    //     for (const auto& packet : scheduleTmpPacket[maxServer])
+    //         if (packet.sdnKvsHeader.GetReqId() != largestWeightReqId)
+    //             weightOfRequest[packet.sdnKvsHeader.GetReqId()] -=
+    //                 weightOfRequest[largestWeightReqId] * packet.sdnKvsHeader.GetKsSiz() /
+    //                 bottle_ks;
+
+    //     // move request to stack
+    //     for (auto& [server_id, vec] : scheduleTmpPacket)
+    //     {
+    //         if (currentQueueSize[server_id] == 0)
+    //             break;
+    //         auto erase_it = std::remove_if(vec.begin(), vec.end(), cond);
+    //         for (auto it = erase_it; it != vec.end(); it++)
+    //         {
+    //             stackPacket[server_id].push(*it);
+    //             keysetTotalSize[server_id] -= it->sdnKvsHeader.GetKsSiz();
+    //         }
+    //         vec.erase(erase_it, vec.end());
+    //     }
+    //     weightOfRequest.erase(largestWeightReqId);
+    //     if (weightOfRequest.size() == 0)
+    //         isScheduling = false;
+    // }
+}
+
+void
 Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
                        struct ofl_msg_packet_in* msg,
                        Ptr<const RemoteSwitch> swtch,
                        uint32_t xid)
 {
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Schedule client packet, reqid " << sdnKvsHeader.GetReqId()
-                                << " ksSize " << sdnKvsHeader.GetKsSiz());
-    // Get server IP address
     std::stringstream ss;
+    sdnKvsHeader.Print(ss);
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet"
+                                << ss.str());
+    // Get server IP address
+    ss.str("");
     Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
-    Ipv4Address clientIp = ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
     ss << serverIp;
 
-    PacketInput packet_input;
-    packet_input.sdnKvsHeader = sdnKvsHeader;
-    packet_input.msg = msg;
-    packet_input.swtch = swtch;
-    packet_input.xid = xid;
-    packet_input.arrive_time = Simulator::Now();
-    packet_input.from = Address(clientIp);
-    m_vecPacket[m_ipToServer[ss.str()]].push_back(packet_input);
+    // Build schedule packet
+    SchedulePacket schedulePacket;
+    schedulePacket.id = ++m_idCnt;
+    schedulePacket.sdnKvsHeader = sdnKvsHeader;
+    schedulePacket.msg = msg;
+    schedulePacket.swtch = swtch;
+    schedulePacket.xid = xid;
+    schedulePacket.arriveTime = Simulator::Now(); // Record arriving time
+    schedulePacket.dstServerId = m_ipToServer[ss.str()];
 
-    // LRPT_last schedule
-    std::set<uint32_t> heavyServerSet;
-    for (const auto& [server_id, cnt] : m_heavyServer)
+    // Push the schedule packet into the queue
+    ScheduleContext& context = m_scheduleContexts[schedulePacket.dstServerId];
+    context.schedulePackets.push_back(schedulePacket);
+
+    std::map<uint32_t, int64_t> req_wait_time; // Map<request id, max wait time>
+    for (auto& [server_id, ctx] : m_scheduleContexts)
     {
-        if (cnt <= 0)
+        if (ctx.schedulePackets.empty()) // Not overloaded
             continue;
-        heavyServerSet.insert(server_id);
-    }
-    bool isScheduling = !heavyServerSet.empty(); // Schedule when heavy server is not empty
-    double weight_max = 2.0;
-    std::map<uint32_t, double> weightOfRequest;   // Map<server id, request weight>
-    std::map<uint32_t, uint64_t> keysetTotalSize; // Map<server id, total size>
-    std::map<uint32_t, int64_t> currentQueueSize; // Map<server id ,current queue size>
-    std::map<uint32_t, double> waitTime;          // Map<reqid, wait time>
-    std::map<uint32_t, std::stack<PacketInput>> stackPacket;
-    // Init tmp packet for schedule
-    std::map<uint32_t, std::vector<PacketInput>> scheduleTmpPacket(m_vecPacket);
-
-    // Update heavy server queue size
-    for (uint32_t server_id : heavyServerSet)
-    {
-        int64_t queue_size = m_serverHeavyQueueSize[server_id];
-        currentQueueSize[server_id] =
-            queue_size - (int64_t)m_serverRateList[server_id] *
-                             (Simulator::Now().GetMilliSeconds() - m_serverHeavyTime[server_id]);
-        if (currentQueueSize[server_id] < 0)
-            currentQueueSize[server_id] = 0;
-    }
-
-    for (const auto& [server_id, vec] : scheduleTmpPacket)
-    {
-        for (const auto& packet : vec)
+        int64_t dt = Simulator::Now().GetMilliSeconds() - ctx.lastScheduleTime.GetMilliSeconds();
+        if (dt >= 1.00) // 1ms is the minimum delta time.
+        {
+            uint32_t queue_size = ctx.queue_size;
+            // Update each overloaded server's queue size
+            ctx.queue_size = std::max(0U, uint32_t(queue_size - ctx.server_rate * dt));
+            ctx.lastScheduleTime = Simulator::Now();
+        }
+        // Prepare for BP-LPT algorithm. Initialize all requests' wait times.
+        for (auto& packet : ctx.schedulePackets)
         {
             uint32_t req_id = packet.sdnKvsHeader.GetReqId();
-            // update request waitTime
-            waitTime[req_id] =
-                std::max(waitTime[req_id], (Simulator::Now() - packet.arrive_time).GetSeconds());
-            keysetTotalSize[server_id] += packet.sdnKvsHeader.GetKsSiz();
-            // init request weight
-            weightOfRequest[req_id] = std::min(1 + 2.0 * waitTime[req_id], weight_max);
+            int64_t wait_time =
+                Simulator::Now().GetMilliSeconds() - packet.arriveTime.GetMilliSeconds();
+            if (!req_wait_time.count(req_id))
+                req_wait_time[req_id] = 0;
+            req_wait_time[req_id] = std::max(req_wait_time[req_id], wait_time);
         }
     }
 
-    while (isScheduling)
+    // Waiting for the scheduling requests list. Sorted in scheduling.
+    std::vector<ScheduleRequest> scheduleRequests;
+    // Build request list
+    for (const auto& [req_id, wait_time] : req_wait_time)
     {
-        // Find the bottleneck server
-        uint32_t keysetPlusQsz = 0, maxServer = 0;
-        for (uint32_t server_id : heavyServerSet)
-        {
-            uint32_t val = (keysetTotalSize[server_id] + currentQueueSize[server_id]) /
-                           m_serverRateList[server_id];
-            if (val < keysetPlusQsz)
-                continue;
-            keysetPlusQsz = val;
-            maxServer = server_id;
-        }
-
-        // Find the request with the largest weight
-        double largestWeight = INT32_MIN;
-        uint32_t largestWeightReqId = 0;
-        for (const auto& packet : scheduleTmpPacket[maxServer])
-        {
-            uint32_t req_id = packet.sdnKvsHeader.GetReqId();
-            double val = weightOfRequest[req_id] / packet.sdnKvsHeader.GetKsSiz(); // 初始化
-            if (val <= largestWeight)
-                continue;
-            largestWeight = val;
-            largestWeightReqId = req_id;
-        }
-
-        // Update request's weight
-        auto cond = [largestWeightReqId](const PacketInput& packet) {
-            return packet.sdnKvsHeader.GetReqId() == largestWeightReqId;
-        };
-        PacketInput target_packet = *std::find_if(scheduleTmpPacket[maxServer].begin(),
-                                                  scheduleTmpPacket[maxServer].end(),
-                                                  cond);
-        uint32_t bottle_ks = target_packet.sdnKvsHeader.GetKsSiz();
-        for (const auto& packet : scheduleTmpPacket[maxServer])
-            if (packet.sdnKvsHeader.GetReqId() != largestWeightReqId)
-                weightOfRequest[packet.sdnKvsHeader.GetReqId()] -=
-                    weightOfRequest[largestWeightReqId] * packet.sdnKvsHeader.GetKsSiz() /
-                    bottle_ks;
-
-        // move request to stack
-        for (auto& [server_id, vec] : scheduleTmpPacket)
-        {
-            if (currentQueueSize[server_id] == 0)
-                break;
-            auto erase_it = std::remove_if(vec.begin(), vec.end(), cond);
-            for (auto it = erase_it; it != vec.end(); it++)
-            {
-                stackPacket[server_id].push(*it);
-                keysetTotalSize[server_id] -= it->sdnKvsHeader.GetKsSiz();
-            }
-            vec.erase(erase_it, vec.end());
-        }
-        weightOfRequest.erase(largestWeightReqId);
-        if (weightOfRequest.size() == 0)
-            isScheduling = false;
+        ScheduleRequest scheduleRequest;
+        scheduleRequest.req_id = req_id;
+        scheduleRequest.weight = 1.0 + 2.0 * wait_time;
+        scheduleRequests.push_back(scheduleRequest);
     }
-    // end schedule
+    // Do BP-LPT algorithm
+    BP_LPT(scheduleRequests);
 
-    // remove send event
-    auto event_cond = [&currentQueueSize](SendEvent& event) {
-        return event.eventId.IsExpired() || currentQueueSize[event.serverId] != 0;
-    };
-    auto event_it = std::remove_if(m_sendEventList.begin(), m_sendEventList.end(), event_cond);
-    for (auto it = event_it; it != m_sendEventList.end(); it++)
-        if (currentQueueSize[it->serverId] != 0)
-            it->eventId.Cancel();
-    m_sendEventList.erase(event_it, m_sendEventList.end());
-
-    // set send event
-    for (auto& [server_id, st] : stackPacket)
+    std::map<uint32_t, std::vector<SchedulePacket*>> pktSnapshot;
+    // Prebuild packet snapshot data structure
+    for (auto& [server_id, ctx] : m_scheduleContexts)
     {
-        if (st.empty())
-            continue;
-        double tmp = (1.0 * currentQueueSize[server_id]) / (1.0 * m_serverRateList[server_id]);
-        while (!st.empty())
+        for (auto& pkt : ctx.schedulePackets)
         {
-            PacketInput packet = st.top();
-            Time t = Seconds(tmp / 1000);
+            uint32_t req_id = pkt.sdnKvsHeader.GetReqId();
+            if (!pktSnapshot.count(req_id))
+                pktSnapshot[req_id] = std::vector<SchedulePacket*>();
+            pktSnapshot[req_id].push_back(&pkt);
+        }
+    }
+
+    for (const auto& req : scheduleRequests)
+    {
+        for (const auto& pkt : pktSnapshot[req.req_id])
+        {
+            // Log SDN-KVS header information
             ss.str("");
-            ss << packet.from;
-            SendEvent sendE;
-            sendE.eventId = Simulator::Schedule(t,
-                                                &Controller::RemovePacketAndForward,
-                                                this,
-                                                packet.sdnKvsHeader,
-                                                packet.msg,
-                                                packet.swtch,
-                                                packet.xid);
-            sendE.serverId = m_ipToServer[ss.str()];
-            m_sendEventList.push_back(sendE);
-            tmp += 0.05;
-            st.pop();
+            pkt->sdnKvsHeader.Print(ss);
+
+            ScheduleContext& ctx = m_scheduleContexts[pkt->dstServerId];
+            Time dt = Seconds((1.0 * ctx.queue_size) / (1000.0 * ctx.server_rate));
+            // Remove send event set before
+            if (pkt->eventId.IsRunning())
+            {
+                NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                            << "] Cancel the send event for Packet(pkt_id="
+                                            << pkt->id << ")" << ss.str());
+                pkt->eventId.Cancel();
+            }
+            // Set send event
+            pkt->eventId = Simulator::Schedule(dt, &Controller::RemovePacketAndForward, this, *pkt);
+            NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                        << "] Packet(pkt_id=" << pkt->id << ")" << ss.str()
+                                        << " will be forwarded to the server " << pkt->dstServerId
+                                        << " in " << dt.As(Time::S));
         }
     }
-    // Do not free the message. Message will be free in RemovePacketAndForward function
+    // Do not free the message.
+    // Message will be free in RemovePacketAndForward function
 }
 
 void
@@ -376,34 +399,43 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         ss << serverIp;
         std::string serverIp_str = ss.str();
         uint32_t server_id = m_ipToServer[serverIp_str];
-        if (!m_heavyServer.count(server_id))
-            m_heavyServer[server_id] = 0;
-        m_heavyServer[server_id] += 1; // This server is overloaded. Count this packet to the server
 
         // Record the overload time, queue size and server service rate when overloaded
-        m_serverHeavyQueueSize[server_id] = sdnKvsHeader.GetQueueSiz();
-        m_serverHeavyTime[server_id] = Simulator::Now().GetMilliSeconds();
-        m_serverRateList[server_id] = sdnKvsHeader.GetServerRate();
+        ScheduleContext& context = m_scheduleContexts[server_id];
+        context.queue_size = sdnKvsHeader.GetQueueSiz();
+        context.server_rate = sdnKvsHeader.GetServerRate();
+        context.lastScheduleTime = Simulator::Now();
 
         // The server is overloaded. Modify the flow table to make each packet
         // sent from the client to be redirected to the controller.
         NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server " << server_id
                                     << "(ip=" << serverIp_str
-                                    << ", queue_siz=" << m_serverHeavyQueueSize[server_id]
-                                    << ", heavy_time=" << m_serverHeavyTime[server_id]
-                                    << ", server_rate=" << m_serverRateList[server_id]
+                                    << ", queue_siz=" << context.queue_size
+                                    << ", heavy_time=" << context.lastScheduleTime.As(Time::S)
+                                    << ", server_rate=" << context.server_rate
                                     << ") is overloaded. Modify flow table for switch " << swDpId);
         ss.str(""); // Clear string stream
         ss << "flow-mod cmd=mod,table=0,prio=100 "
            << "eth_type=0x0800,ip_dst=" << serverIp_str << " apply:output=ctrl:128";
         DpctlExecute(swDpId, ss.str());
 
+        // Cancel the undo event if there is already an event set before.
+        ScheduleContext& ctx = m_scheduleContexts[server_id];
+        if (ctx.undoFlowEvents[swDpId].IsRunning())
+        {
+            NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                        << "] Cancel undo flow table modification event for switch "
+                                        << swDpId << " (server_id=" << server_id << ")");
+            ctx.undoFlowEvents[swDpId].Cancel();
+        }
+
         // Set timer to undo modification.
         Time dt =
             Seconds(1.0 * sdnKvsHeader.GetQueueSiz() / (1000.0 * sdnKvsHeader.GetServerRate()));
         NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
                                     << " later will undo the modification of the flow table");
-        Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
+        ctx.undoFlowEvents[swDpId] =
+            Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
     }
     // Forward packet to client
     ForwardPacket(msg, swtch, xid);
@@ -430,30 +462,24 @@ Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
 }
 
 void
-Controller::RemovePacketAndForward(SdnKvsHeader& sdnKvsHeader,
-                                   struct ofl_msg_packet_in* msg,
-                                   Ptr<const RemoteSwitch> swtch,
-                                   uint32_t xid)
+Controller::RemovePacketAndForward(SchedulePacket pkt)
 {
-    Address from = Address(ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match));
-    for (auto& [server_id, vec] : m_vecPacket)
-    {
-        auto cond = [&from, msg](PacketInput& packet) {
-            return msg->buffer_id == packet.msg->buffer_id && from == packet.from;
-        };
-        auto it = std::remove_if(vec.begin(), vec.end(), cond);
-        vec.erase(it, vec.end());
-    }
-    ForwardPacket(msg, swtch, xid);
-
-    Address to = Address(ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match));
+    // Print log
     std::stringstream ss;
-    ss << to;
-    uint32_t server_id = m_ipToServer[ss.str()];
-    m_heavyServer[server_id] -= 1; // Reduce this packet count
-
+    pkt.sdnKvsHeader.Print(ss);
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                << "] Forward packet(pkt_id=" << pkt.id << ")" << ss.str()
+                                << " to the server " << pkt.dstServerId);
+    // Remove packet from schdule list
+    ScheduleContext& ctx = m_scheduleContexts[pkt.dstServerId];
+    auto cond = [&pkt](SchedulePacket& packet) { return packet.id == pkt.id; };
+    auto it = std::find_if(ctx.schedulePackets.begin(), ctx.schedulePackets.end(), cond);
+    if (it != ctx.schedulePackets.end())
+        ctx.schedulePackets.erase(it);
+    // Forward packet to the server
+    ForwardPacket(pkt.msg, pkt.swtch, pkt.xid);
     // Free message after forwarding packet
-    ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
+    ofl_msg_free((struct ofl_msg_header*)pkt.msg, nullptr);
 }
 
 int
