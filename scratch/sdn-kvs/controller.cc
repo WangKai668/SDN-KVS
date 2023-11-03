@@ -203,7 +203,7 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
                                 << " completed");
 }
 
-void
+std::vector<uint32_t>
 Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
 {
     std::stringstream ss;
@@ -213,6 +213,55 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
     ss << "]";
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Do BP-LPT for array(size="
                                 << scheduleRequests.size() << "): " << ss.str());
+
+    std::vector<uint32_t> ret;
+    std::set<uint32_t> req_set;
+    std::map<uint32_t, double> req_weight;
+    for (const auto& req : scheduleRequests)
+    {
+        req_set.insert(req.req_id);
+        req_weight[req.req_id] = req.weight;
+    }
+    while (!req_set.empty())
+    {
+        uint32_t sid = FindBottleneckServer(req_set);
+        double mx = INFINITY;
+        uint32_t target = 0;
+        for (const auto& req_id : req_set)
+        {
+            double weight = req_weight[req_id] / SumKeyset(req_id, sid);
+            NS_LOG_UNCOND("DEBUG: " << weight << " " << sid << " " << req_id << " "
+                                    << req_weight[req_id] << " " << SumKeyset(req_id, sid));
+            if (weight > mx)
+                continue;
+            mx = weight;
+            target = req_id;
+        }
+        for (auto& [req_id, weight] : req_weight)
+        {
+            if (!req_set.count(req_id) || req_id == target)
+                continue;
+            uint32_t v1 = SumKeyset(req_id, sid);
+            uint32_t v2 = SumKeyset(target, sid);
+            if (v1 == 0 && v2 == 0)
+                continue;
+            weight -= (req_weight[target] * v1 / v2);
+        }
+        req_weight[target] = mx;
+        ret.push_back(target);
+        req_set.erase(target);
+    }
+    std::reverse(ret.begin(), ret.end());
+
+    ss.str("");
+    ss << "[";
+    for (const auto& req_id : ret)
+        ss << "(req_id=" << req_id << ", weight=" << req_weight[req_id] << ")";
+    ss << "]";
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                << "] Schedule completed(size=" << ret.size() << "): " << ss.str());
+
+    return ret;
     // while (isScheduling)
     // {
     //     // Find the bottleneck server
@@ -338,7 +387,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         scheduleRequests.push_back(scheduleRequest);
     }
     // Do BP-LPT algorithm
-    BP_LPT(scheduleRequests);
+    std::vector<uint32_t> sortedReuests = BP_LPT(scheduleRequests);
 
     std::map<uint32_t, std::vector<SchedulePacket*>> pktSnapshot;
     // Prebuild packet snapshot data structure
@@ -353,9 +402,9 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         }
     }
 
-    for (const auto& req : scheduleRequests)
+    for (const auto& req_id : sortedReuests)
     {
-        for (const auto& pkt : pktSnapshot[req.req_id])
+        for (const auto& pkt : pktSnapshot[req_id])
         {
             // Log SDN-KVS header information
             ss.str("");
@@ -600,4 +649,54 @@ Controller::GetSwitchPortByIPv4(uint64_t switch_id, Ipv4Address& ipv4)
     uint32_t client_id = m_ipToClient[ip];
     int32_t ret = GetSwitchPortByClientId(switch_id, client_id);
     return (ret == -1) ? m_switchPortCnt[switch_id - 1] : ret;
+}
+
+uint32_t
+Controller::SumKeyset(std::set<uint32_t>& req_set, uint32_t server_id)
+{
+    uint32_t ret = 0;
+    const ScheduleContext& ctx = m_scheduleContexts[server_id];
+    for (const auto& pkt : ctx.schedulePackets)
+    {
+        uint32_t req_id = pkt.sdnKvsHeader.GetReqId();
+        if (!req_set.count(req_id))
+            continue;
+        ret += pkt.sdnKvsHeader.GetKsSiz();
+    }
+    return ret;
+}
+
+uint32_t
+Controller::SumKeyset(uint32_t req_id, uint32_t server_id)
+{
+    uint32_t ret = 0;
+    const ScheduleContext& ctx = m_scheduleContexts[server_id];
+    for (const auto& pkt : ctx.schedulePackets)
+    {
+        if (pkt.sdnKvsHeader.GetReqId() != req_id)
+            continue;
+        ret += pkt.sdnKvsHeader.GetKsSiz();
+    }
+    return ret;
+}
+
+uint32_t
+Controller::FindBottleneckServer(std::set<uint32_t>& req_set)
+{
+    // Assert that there is at least one server overloaded and can always get the answer
+    // when this function is called.
+    uint32_t mx = 0, ret = 0;
+    uint32_t server_num = m_serverNodes.size();
+    for (uint32_t i = 0; i < server_num; i++)
+    {
+        const ScheduleContext& ctx = m_scheduleContexts[i];
+        if (ctx.schedulePackets.empty()) // This server is not overloaded
+            continue;
+        // The weight computed here is always greater than or equal to 0
+        uint32_t weight = SumKeyset(req_set, i) + ctx.queue_size;
+        if (weight < mx)
+            continue;
+        mx = weight, ret = i;
+    }
+    return ret;
 }

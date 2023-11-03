@@ -186,8 +186,32 @@ class Controller : public OFSwitch13Controller
     /**
      * Do BP-LPT algorithm. This function will sort the request list.
      * \param scheduleRequests Request list waiting for scheduling.
+     * \return Sorted request list
      */
-    void BP_LPT(std::vector<ScheduleRequest>& scheduleRequests);
+    std::vector<uint32_t> BP_LPT(std::vector<ScheduleRequest>& scheduleRequests);
+
+    /**
+     * Get keyset sum for a specific request set and output server id.
+     * \param req_set Request id set
+     * \param server_id Server id
+     * \return Sum of keyset
+     */
+    uint32_t SumKeyset(std::set<uint32_t>& req_set, uint32_t server_id);
+
+    /**
+     * Get keyset sum for a specific request and output server id.
+     * \param req_id Request id
+     * \param server_id Server id
+     * \return Sum of keyset
+     */
+    uint32_t SumKeyset(uint32_t req_id, uint32_t server_id);
+
+    /**
+     * Find bottleneck server.
+     * \param req_set Request id set
+     * \return Bottleneck server id
+     */
+    uint32_t FindBottleneckServer(std::set<uint32_t>& req_set);
 
     /**
      * Controller has the whole topology of network.
