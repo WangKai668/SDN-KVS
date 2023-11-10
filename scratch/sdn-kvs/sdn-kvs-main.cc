@@ -31,9 +31,8 @@ uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
 uint32_t client_num = 5;      // The number of client node
 uint32_t server_num = 5;      // The number of server node
-uint32_t key_num = 100000;    // The upper bound of the total number of keys(n keys = 1 keyset)
-uint32_t request_num = 100;   // The upper bound of the total number of requests
-
+uint32_t key_num = 3000;      // The upper bound of the total number of keys(n keys = 1 keyset)
+static const int request_size = 30;
 /**
  * Global variable
  */
@@ -46,22 +45,22 @@ std::map<uint32_t, std::vector<RequestTableEntry>> req_table; // Key: client id
  * Generate the number of keys in a request. It is guaranteed to be less than or equal to key_num.
  */
 uint32_t
-generate_size()
+generate_req_size()
 {
     uint32_t ret = 0;
     switch (distribution_type)
     {
     case POSSION: {
         Ptr<UniformRandomVariable> x = CreateObject<UniformRandomVariable>();
-        x->SetAttribute("Min", DoubleValue(request_num - 5));
-        x->SetAttribute("Max", DoubleValue(request_num + 5));
+        x->SetAttribute("Min", DoubleValue(request_size - 5));
+        x->SetAttribute("Max", DoubleValue(request_size + 5));
         ret = x->GetInteger();
         break;
     }
     case PARETO: {
         double rand_value = rand() / double(RAND_MAX);
         double alpha = 2.0;
-        uint32_t x_min = uint32_t(request_num * (alpha - 1) / alpha);
+        uint32_t x_min = uint32_t(request_size * (alpha - 1) / alpha);
         uint32_t req_size = uint32_t(x_min / pow((1 - rand_value), (1 / alpha)));
         ret = req_size > 100 ? 100 : req_size;
         break;
@@ -104,7 +103,7 @@ generate_ks_siz(int ks_num)
         {
             double rand_value = rand() / double(RAND_MAX);
             double alpha = 2.0;
-            double mean = double(request_num / double(ks_num));
+            double mean = double(request_size / double(ks_num));
             double x_min = (alpha - 1) * mean / alpha;
             ret = uint32_t(x_min / pow((1 - rand_value), (1 / alpha)));
             ret = ret > 100 ? 100 : ret;
@@ -115,8 +114,8 @@ generate_ks_siz(int ks_num)
     }
     case LIGHT: {
         Ptr<UniformRandomVariable> x = CreateObject<UniformRandomVariable>();
-        x->SetAttribute("Min", DoubleValue(request_num / double(ks_num) - 3));
-        x->SetAttribute("Max", DoubleValue(request_num / double(ks_num) + 3));
+        x->SetAttribute("Min", DoubleValue(request_size / double(ks_num) - 3));
+        x->SetAttribute("Max", DoubleValue(request_size / double(ks_num) + 3));
         uint32_t value = x->GetInteger();
         ret = value <= 0 ? 1 : value;
         break;
@@ -129,7 +128,7 @@ generate_ks_siz(int ks_num)
  * Generate destination server id(start from 0) for keyset
  */
 uint32_t
-generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, uint32_t& hot_server_num)
+generate_dst_server(std::unordered_map<uint32_t, bool>& is_add)
 {
     uint32_t ret;
     while (true)
@@ -145,8 +144,6 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, uint32_t& hot_se
             // 生成 value1 * (value - 1) 到 value1 * value 之间的随机数
             int value2 = (rand() % (value1 + 1)) + value1 * (value - 1);
             x = value2 % server_num + client_num + 1;
-            if (x >= 101 && x <= 120)
-                ++hot_server_num;
         }
         else
         {
@@ -186,7 +183,8 @@ void
 init_request_table(NodeContainer& serverNodes)
 {
     std::vector<RequestTableEntry> vec; // Temporary vector to store entry
-    for (uint32_t req_id = 1; req_id <= request_num; req_id++)
+    uint32_t req_id = 1;
+    while (key_num > 0)
     {
         std::vector<uint32_t> keyset; // All keysets generated for this request
 
@@ -194,13 +192,14 @@ init_request_table(NodeContainer& serverNodes)
         uint32_t client_id = rand() % client_num;
         if (req_table.count(client_id) == 0)
             req_table[client_id] = std::vector<RequestTableEntry>();
-        uint32_t key_siz = generate_size();  // The upper bound of the keyset size of this request
+        // The upper bound of request size
+        uint32_t req_siz = generate_req_size();
         uint32_t ks_num = generate_ks_num(); // The upper bound of the keyset number of this request
 
         // Generate keyset for request. The generated keyset's size and number will not be greater
         // than the upper bound.
         uint32_t iter_ks_siz = 0; // Each keyset size generated
-        for (uint32_t i = key_siz, j = 0; i > 0 && j < ks_num; i -= iter_ks_siz, j++)
+        for (uint32_t i = req_siz, j = 0; i > 0 && j < ks_num; i -= iter_ks_siz, j++)
         {
             iter_ks_siz = generate_ks_siz(ks_num);
             if (iter_ks_siz > i)
@@ -212,11 +211,10 @@ init_request_table(NodeContainer& serverNodes)
         tot_ks_num += keyset.size();
 
         std::unordered_map<uint32_t, bool> is_add;
-        uint32_t hot_server_num = 0;
         for (uint32_t ks_siz : keyset)
         {
             // The server that this keyset data packet was sent to
-            uint32_t server_id = generate_dst_server(is_add, hot_server_num);
+            uint32_t server_id = generate_dst_server(is_add);
             // Get IPv4 address from server id
             Ptr<Node> serverNode = serverNodes.Get(server_id);
             std::stringstream ss;
@@ -236,13 +234,11 @@ init_request_table(NodeContainer& serverNodes)
             vec.push_back(entry);
         }
 
-        if (keyset.size() == hot_server_num && keyset.size() > 1)
-            NS_LOG_UNCOND("All are hotspot servers");
-
-        key_num -= key_siz;
+        key_num -= req_siz;
         ++tot_request_num; // Count the total number of requests
         if (key_num <= 0)
             break;
+        req_id++;
     }
 
     // Initialize send time
