@@ -31,11 +31,13 @@ ApplicationContainer
 ServerHelper::Install(NodeContainer c)
 {
     ApplicationContainer apps;
+    uint32_t cnt = 0;
     for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i)
     {
         Ptr<Node> node = *i;
 
         m_server = m_factory.Create<Server>();
+        m_server->SetServerId(cnt++);
         node->AddApplication(m_server);
         apps.Add(m_server);
     }

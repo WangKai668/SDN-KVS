@@ -60,7 +60,10 @@ Server::GetTypeId()
 
 Server::Server()
 {
-    m_queue_size = 0; // MODIFY LINE
+    // MODIFY BEGIN
+    m_queue_size = 0;
+    m_lst = 0;
+    // MODIFY END
 }
 
 Server::~Server()
@@ -145,6 +148,20 @@ Server::StopApplication()
     }
 }
 
+// MODIFY BEGIN
+uint32_t
+Server::GetServerId()
+{
+    return m_server_id;
+}
+
+void
+Server::SetServerId(uint32_t server_id)
+{
+    m_server_id = server_id;
+}
+// MODIFY END
+
 void
 Server::HandleRead(Ptr<Socket> socket)
 {
@@ -163,14 +180,16 @@ Server::HandleRead(Ptr<Socket> socket)
         sdnKvsHeader.Print(ss);
         if (InetSocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
+            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                    << "(queue_siz=" << m_queue_size << ") received SDN-KVS packet"
                                     << ss.str() << " from "
                                     << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                     << InetSocketAddress::ConvertFrom(from).GetPort());
         }
         else if (Inet6SocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
+            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                    << "(queue_siz=" << m_queue_size << ") received SDN-KVS packet"
                                     << ss.str() << " from "
                                     << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                     << Inet6SocketAddress::ConvertFrom(from).GetPort());
@@ -184,9 +203,10 @@ Server::HandleRead(Ptr<Socket> socket)
         uint32_t ks_siz = HandlePacket(packet); // Hook
 
         // Schedule send packet event
-        Time dt = Seconds(1.0 * ks_siz / (1000.0 * m_server_rate));
+        Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S)
-                                << "] Server will finish handled in " << dt.As(Time::S));
+                                << "] Server " << m_server_id << "(queue_siz=" << m_queue_size
+                                << ") will finish handled in " << dt.As(Time::S));
         Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from, ks_siz);
 
         // MODIFY END
@@ -201,13 +221,18 @@ Server::HandlePacket(Ptr<Packet> packet)
     packet->RemoveHeader(sdnKvsHeader);
 
     uint32_t ks_siz = sdnKvsHeader.GetKsSiz();
+    // Update queue size
+    int64_t cur = Simulator::Now().GetMilliSeconds();
+    if (m_lst > 0)
+        m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
     m_queue_size += ks_siz;
+    m_lst = cur;
     sdnKvsHeader.SetHeavy(0);
     if (m_queue_size > m_tqs)
     {
         // Server overloaded, send signal packet to SDN controller
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S)
-                                << "] Server overloaded, set heavy field to 1"
+                                << "] Server " << m_server_id << " is overloaded, set heavy field to 1"
                                 << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs << ")");
         sdnKvsHeader.SetHeavy(1U);
     }
@@ -221,23 +246,33 @@ Server::HandlePacket(Ptr<Packet> packet)
 void
 Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32_t ks_siz)
 {
-    m_queue_size -= ks_siz; // MODIFY LINE: Pop the packet from server queue before sending
+    // Update queue size if the queue is not empty
+    if (m_lst > 0)
+    {
+        int64_t cur = Simulator::Now().GetMilliSeconds();
+        m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
+        m_lst = m_queue_size ? cur : 0;
+    }
     socket->SendTo(packet, 0, from);
 
     SdnKvsHeader sdnKvsHeader;
-    packet->PeekHeader(sdnKvsHeader);
+    packet->RemoveHeader(sdnKvsHeader);
+    sdnKvsHeader.SetQueueSiz(m_queue_size);
+    packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
     if (InetSocketAddress::IsMatchingType(from))
     {
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Sent SDN-KVS packet"
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet" 
                                 << ss.str() << " to "
                                 << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                 << InetSocketAddress::ConvertFrom(from).GetPort());
     }
     else if (Inet6SocketAddress::IsMatchingType(from))
     {
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Sent SDN-KVS packet"
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet" 
                                 << ss.str() << " to "
                                 << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                 << Inet6SocketAddress::ConvertFrom(from).GetPort());
