@@ -160,6 +160,7 @@ Server::SetServerId(uint32_t server_id)
 {
     m_server_id = server_id;
 }
+
 // MODIFY END
 
 void
@@ -204,9 +205,9 @@ Server::HandleRead(Ptr<Socket> socket)
 
         // Schedule send packet event
         Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S)
-                                << "] Server " << m_server_id << "(queue_siz=" << m_queue_size
-                                << ") will finish handled in " << dt.As(Time::S));
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << "(queue_siz=" << m_queue_size << ") will finish handled in "
+                                << dt.As(Time::S));
         Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from, ks_siz);
 
         // MODIFY END
@@ -231,8 +232,8 @@ Server::HandlePacket(Ptr<Packet> packet)
     if (m_queue_size > m_tqs)
     {
         // Server overloaded, send signal packet to SDN controller
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S)
-                                << "] Server " << m_server_id << " is overloaded, set heavy field to 1"
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << " is overloaded, set heavy field to 1"
                                 << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs << ")");
         sdnKvsHeader.SetHeavy(1U);
     }
@@ -264,7 +265,7 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32
     if (InetSocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet" 
+                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet"
                                 << ss.str() << " to "
                                 << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                 << InetSocketAddress::ConvertFrom(from).GetPort());
@@ -272,7 +273,7 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32
     else if (Inet6SocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet" 
+                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet"
                                 << ss.str() << " to "
                                 << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                 << Inet6SocketAddress::ConvertFrom(from).GetPort());

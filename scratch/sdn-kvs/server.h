@@ -27,7 +27,7 @@ class Server : public Application
     ~Server() override;
 
     uint32_t GetServerId();
-    
+
     void SetServerId(uint32_t server_id);
 
   protected:
