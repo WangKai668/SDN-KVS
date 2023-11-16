@@ -37,8 +37,9 @@ class ServerHelper
      * \param port The port the server will wait on for incoming packets
      * \param server_rate Server handle rate
      * \param tqs Server TQS
+     * \param enable_srpt Whether SRPT algorithm is enabled on the server
      */
-    ServerHelper(uint16_t port, uint32_t server_rate, uint32_t tqs);
+    ServerHelper(uint16_t port, uint32_t server_rate, uint32_t tqs, bool enable_srpt);
 
     /**
      * Record an attribute to be set in each Application after it is is created.

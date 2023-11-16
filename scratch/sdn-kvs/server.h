@@ -1,12 +1,16 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include "sdn-kvs-header.h"
+
 #include "ns3/address.h"
 #include "ns3/application.h"
 #include "ns3/event-id.h"
 #include "ns3/ptr.h"
 #include "ns3/socket.h"
 #include "ns3/traced-callback.h"
+
+#include <queue>
 
 using namespace ns3;
 
@@ -34,7 +38,31 @@ class Server : public Application
     void DoDispose() override;
 
   private:
+    /**
+     * If SRPT algorithm is enabled on the server, this context is saved in the queue
+     * to be scheduled some time.
+     */
+    struct ScheduleContext
+    {
+        SdnKvsHeader sdnKvsHeader; // Avoid deserialize repeatedlly
+        Ptr<Socket> socket;
+        Ptr<Packet> packet;
+        Address from;
+    };
+
+    /**
+     * Compare function for priority queue used by SRPT algorithm
+     */
+    struct SrptCompare
+    {
+        bool operator()(const ScheduleContext& ctx1, const ScheduleContext& ctx2)
+        {
+            return ctx1.sdnKvsHeader.GetKsSiz() < ctx2.sdnKvsHeader.GetKsSiz();
+        };
+    };
+
     void StartApplication() override;
+
     void StopApplication() override;
 
     /**
@@ -51,9 +79,13 @@ class Server : public Application
      *
      * \param packet Packet received from client.
      * \param from Where the packet is from.
-     * \return Return keyset size of this packet.
      */
-    uint32_t HandlePacket(Ptr<Packet> packet);
+    void HandlePacket(Ptr<Packet> packet);
+
+    /**
+     * Pop a packet from the priority queue to set a new sending event.
+     */
+    void ScheduleSrptEvent();
 
     /**
      * Send packet to client.
@@ -63,18 +95,23 @@ class Server : public Application
      * \param from Where the packet is from.
      * \param ks_siz Keyset size of this packet.
      */
-    void SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32_t ks_siz);
+    void SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from);
 
-    uint32_t m_server_id;  //!< Server ID
     uint16_t m_port;       //!< Port on which we listen for incoming packets.
     Ptr<Socket> m_socket;  //!< IPv4 Socket
     Ptr<Socket> m_socket6; //!< IPv6 Socket
     Address m_local;       //!< local multicast address
 
+    uint32_t m_server_id;   //!< Server ID
     uint32_t m_server_rate; //!< Server handle rate. (Number of keys processed per millisecond)
     uint32_t m_queue_size;  //!< Current server queue size
     uint32_t m_tqs;         //!< Server TQS
     int64_t m_lst;          //!< Last time to update queue size
+
+    bool m_srpt_enabled; //!< Whether SRPT algorithm is enabled on the server
+    EventId m_cur_event; //!< Current sending event
+    //!< Priority queue used by SRPT algorithm
+    std::priority_queue<ScheduleContext, std::vector<ScheduleContext>, SrptCompare> m_queue;
 
     /// Callbacks for tracing the packet Rx events
     TracedCallback<Ptr<const Packet>> m_rxTrace;

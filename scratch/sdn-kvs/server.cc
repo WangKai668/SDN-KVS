@@ -3,6 +3,7 @@
 #include "sdn-kvs-header.h"
 
 #include "ns3/address-utils.h"
+#include "ns3/boolean.h"
 #include "ns3/inet-socket-address.h"
 #include "ns3/inet6-socket-address.h"
 #include "ns3/ipv4-address.h"
@@ -46,6 +47,11 @@ Server::GetTypeId()
                           UintegerValue(64),
                           MakeUintegerAccessor(&Server::m_tqs),
                           MakeUintegerChecker<uint32_t>())
+            .AddAttribute("SrptEnabled",
+                          "Whether SRPT algorithm is enabled on the server.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&Server::m_srpt_enabled),
+                          MakeBooleanChecker())
             // MODIFY END
             .AddTraceSource("Rx",
                             "A packet has been received",
@@ -200,33 +206,47 @@ Server::HandleRead(Ptr<Socket> socket)
         packet->RemoveAllByteTags();
 
         // MODIFY BEGIN
+        if (m_srpt_enabled)
+        {
+            m_queue_size += sdnKvsHeader.GetKsSiz();
+            // Build schedule context
+            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from};
+            // Push the context into the queue
+            m_queue.push(ctx);
+            if (!m_cur_event.IsRunning())
+            {
+                // There is no sending event currently.
+                // Pop the context to set a sending event.
+                ScheduleSrptEvent();
+            }
+        }
+        else
+        {
+            HandlePacket(packet);
 
-        uint32_t ks_siz = HandlePacket(packet); // Hook
-
-        // Schedule send packet event
-        Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") will finish handled in "
-                                << dt.As(Time::S));
-        Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from, ks_siz);
-
+            // Schedule send packet event
+            Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
+            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                    << "(queue_siz=" << m_queue_size << ") will finish handled in "
+                                    << dt.As(Time::S));
+            Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from);
+        }
         // MODIFY END
     }
 }
 
-uint32_t
+void
 Server::HandlePacket(Ptr<Packet> packet)
 {
     // Deserialize SDN-KVS header
     SdnKvsHeader sdnKvsHeader;
     packet->RemoveHeader(sdnKvsHeader);
 
-    uint32_t ks_siz = sdnKvsHeader.GetKsSiz();
     // Update queue size
     int64_t cur = Simulator::Now().GetMilliSeconds();
     if (m_lst > 0)
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
-    m_queue_size += ks_siz;
+    m_queue_size += sdnKvsHeader.GetKsSiz();
     m_lst = cur;
     sdnKvsHeader.SetHeavy(0);
     if (m_queue_size > m_tqs)
@@ -241,15 +261,38 @@ Server::HandlePacket(Ptr<Packet> packet)
     sdnKvsHeader.SetServerRate(m_server_rate);
 
     packet->AddHeader(sdnKvsHeader);
-    return ks_siz;
 }
 
 void
-Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32_t ks_siz)
+Server::ScheduleSrptEvent()
 {
-    // Update queue size if the queue is not empty
-    if (m_lst > 0)
+    if (!m_queue.empty())
     {
+        ScheduleContext ctx = m_queue.top();
+        m_queue.pop();
+        // Print log
+        std::stringstream ss;
+        ctx.sdnKvsHeader.Print(ss);
+        // Update the queue size
+        uint32_t ks_siz = ctx.sdnKvsHeader.GetKsSiz();
+        // Even though it is not sent yet, we do not count the keyset size for it
+        m_queue_size -= ks_siz;
+        // Schedule send packet event
+        Time dt = Seconds(1.0 * ks_siz / (1000.0 * m_server_rate));
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << "(queue_siz=" << m_queue_size << ") begin to handle packet"
+                                << ss.str() << ", it will finish handled in " << dt.As(Time::S));
+        m_cur_event =
+            Simulator::Schedule(dt, &Server::SendPacket, this, ctx.socket, ctx.packet, ctx.from);
+    }
+}
+
+void
+Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
+{
+    if (!m_srpt_enabled && m_lst > 0)
+    {
+        // Update queue size if the queue is not empty(and SRPT algorithm is disabled)
         int64_t cur = Simulator::Now().GetMilliSeconds();
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
         m_lst = m_queue_size ? cur : 0;
@@ -277,5 +320,12 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from, uint32
                                 << ss.str() << " to "
                                 << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                 << Inet6SocketAddress::ConvertFrom(from).GetPort());
+    }
+
+    // Current sending event has been expired.
+    // Set a new sending event if the priority queue is not empty.
+    if (m_srpt_enabled)
+    {
+        ScheduleSrptEvent();
     }
 }

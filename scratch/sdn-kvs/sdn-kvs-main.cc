@@ -22,6 +22,7 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
  */
 bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
+bool enable_srpt = true;                      // Whether SRPT algorithm is enabled on the server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
 double uti = 0.7;                             // Utilization
@@ -385,7 +386,7 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(server_port, server_rate, server_tqs);
+    ServerHelper serverHelper(server_port, server_rate, server_tqs, enable_srpt);
     serverHelper.Install(serverNodes);
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
