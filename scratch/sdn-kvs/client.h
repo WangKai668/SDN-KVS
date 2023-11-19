@@ -72,6 +72,7 @@ class Client : public Application
     void ScheduleTransmit();
 
     std::vector<RequestTableEntry> m_request_list; //!< Request list for this client
+    bool m_sbf_enabled;                            //!< Request list for this client
     uint32_t m_cur = 0;                            //!< Next request list index to be schedule
 
     /// Callbacks for tracing the packet Tx events

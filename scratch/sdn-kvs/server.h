@@ -1,6 +1,7 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#include "model.h"
 #include "sdn-kvs-header.h"
 
 #include "ns3/address.h"
@@ -39,7 +40,7 @@ class Server : public Application
 
   private:
     /**
-     * If SRPT algorithm is enabled on the server, this context is saved in the queue
+     * If SRPT/SBF algorithm is enabled on the server, this context is saved in the queue
      * to be scheduled some time.
      */
     struct ScheduleContext
@@ -48,16 +49,25 @@ class Server : public Application
         Ptr<Socket> socket;
         Ptr<Packet> packet;
         Address from;
+        SchedulingType algorithm;
     };
 
-    /**
-     * Compare function for priority queue used by SRPT algorithm
-     */
-    struct SrptCompare
+    struct Compare
     {
         bool operator()(const ScheduleContext& ctx1, const ScheduleContext& ctx2)
         {
-            return ctx1.sdnKvsHeader.GetKsSiz() < ctx2.sdnKvsHeader.GetKsSiz();
+            switch (ctx1.algorithm)
+            {
+            // used by SBF algorithm
+            case SBF:
+                return ctx1.sdnKvsHeader.GetBottleneckKsSiz() <
+                       ctx2.sdnKvsHeader.GetBottleneckKsSiz();
+                break;
+            default:
+            // used by SRPT algorithm
+            case SRPT:
+                return ctx1.sdnKvsHeader.GetKsSiz() < ctx2.sdnKvsHeader.GetKsSiz();
+            }
         };
     };
 
@@ -85,7 +95,7 @@ class Server : public Application
     /**
      * Pop a packet from the priority queue to set a new sending event.
      */
-    void ScheduleSrptEvent();
+    void ScheduleEvent();
 
     /**
      * Send packet to client.
@@ -109,9 +119,15 @@ class Server : public Application
     int64_t m_lst;          //!< Last time to update queue size
 
     bool m_srpt_enabled; //!< Whether SRPT algorithm is enabled on the server
+    bool m_sbf_enabled;  //!< Whether SBF algorithm is enabled on the server
     EventId m_cur_event; //!< Current sending event
-    //!< Priority queue used by SRPT algorithm
-    std::priority_queue<ScheduleContext, std::vector<ScheduleContext>, SrptCompare> m_queue;
+
+    /**
+     * Compare function for priority queue
+     */
+
+    //!< Priority queue used by SRPT/SBF algorithm
+    std::priority_queue<ScheduleContext, std::vector<ScheduleContext>, Compare> m_queue;
 
     /// Callbacks for tracing the packet Rx events
     TracedCallback<Ptr<const Packet>> m_rxTrace;

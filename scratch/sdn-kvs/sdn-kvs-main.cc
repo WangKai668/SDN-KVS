@@ -20,11 +20,17 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
+
+SchedulingType schedule_algorithm = SBF;
+bool enable_srpt = true;     // Whether SRPT algorithm is enabled on the server
+bool enable_sbf = false;     // Whether SBF algorithm is enabled on the server
+bool enable_sdn_kvs = false; // Whether sdn-kvs algorithm is enabled on the controller
+
 bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
-bool enable_srpt = true;                      // Whether SRPT algorithm is enabled on the server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
+KeysetSizeType sendtime_type = LIGHT;         // The keyset size type
 double uti = 0.7;                             // Utilization
 uint32_t simTime = 100;                       // Simulator running time(unit: second)
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
@@ -176,6 +182,20 @@ poisson(double lambda)
     return pV;
 }
 
+// Generate heavy-tailed distributions of request intervals
+Time
+GenerateArriveIntervalPareto(double mean)
+{
+    Ptr<ParetoRandomVariable> pArrival = CreateObject<ParetoRandomVariable>();
+    pArrival->SetAttribute("Scale", DoubleValue(mean));
+    pArrival->SetAttribute("Shape", DoubleValue(2.0));
+    // pArrival->SetAttribute("Bound", DoubleValue(0.5));
+    double value = pArrival->GetValue();
+    std::cout << "v: " << value << std::endl;
+    Time tNext(Seconds(value));
+    return tNext;
+}
+
 /**
  * Prebuild request table
  * \param serverNodes Node container of server nodes. It is used to get IPv4 address from node.
@@ -199,18 +219,22 @@ init_request_table(NodeContainer& serverNodes)
 
         // Generate keyset for request. The generated keyset's size and number will not be greater
         // than the upper bound.
-        uint32_t iter_ks_siz = 0; // Each keyset size generated
+        uint32_t iter_ks_siz = 0;       // Each keyset size generated
+        uint32_t bottleneck_keyset = 0; // bottleneck keyset size
         for (uint32_t i = req_siz, j = 0; i > 0 && j < ks_num; i -= iter_ks_siz, j++)
         {
             iter_ks_siz = generate_ks_siz(ks_num);
             if (iter_ks_siz > i)
                 iter_ks_siz = i;
+
+            if (iter_ks_siz > bottleneck_keyset)
+                bottleneck_keyset = iter_ks_siz;
+
             keyset.push_back(iter_ks_siz);
         }
         // Count the total size and total number of keysets
         tot_key_num += std::accumulate(keyset.begin(), keyset.end(), 0);
         tot_ks_num += keyset.size();
-
         std::unordered_map<uint32_t, bool> is_add;
         for (uint32_t ks_siz : keyset)
         {
@@ -230,6 +254,7 @@ init_request_table(NodeContainer& serverNodes)
             entry.dst_port = server_port;
             entry.req_id = req_id;
             entry.ks_siz = ks_siz;
+            entry.bottleneck_ks_size = bottleneck_keyset;
 
             // Record this entry to the temporary vector
             vec.push_back(entry);
@@ -249,14 +274,26 @@ init_request_table(NodeContainer& serverNodes)
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
         double t_mean = (1 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
-        double r = 0;
-        while (true)
+        double double_tNext;
+        switch (sendtime_type)
         {
-            r = poisson(1 / t_mean);
-            if (r != 0)
-                break;
+        case LIGHT: {
+            double r = 0;
+            while (true)
+            {
+                r = poisson(1 / t_mean);
+                if (r != 0)
+                    break;
+            }
+            double_tNext = Seconds(r).GetSeconds();
         }
-        double double_tNext = Seconds(r).GetSeconds();
+        break;
+        case HEAVY:
+        default: {
+            double_tNext = GenerateArriveIntervalPareto(t_mean).GetSeconds();
+        }
+        break;
+        }
         send_time += double_tNext;
         send_time_mp[req_id] = send_time;
     }
@@ -286,7 +323,8 @@ init_request_table(NodeContainer& serverNodes)
             std::stringstream ss;
             ss << "[" << client_id << "] (st=" << entry.st << ", src_client=" << entry.src_client
                << ", dst_server=" << entry.dst_server << ", dst_ip=" << entry.dst_ip
-               << ", req_id=" << entry.req_id << ", ks_siz=" << entry.ks_siz << ")";
+               << ", req_id=" << entry.req_id << ", ks_siz=" << entry.ks_siz
+               << ", bottleneck_ks_size=" << entry.bottleneck_ks_size << ")";
             NS_LOG_UNCOND(ss.str());
         }
     }
@@ -295,6 +333,40 @@ init_request_table(NodeContainer& serverNodes)
 int
 main(int argc, char* argv[])
 {
+    switch (schedule_algorithm)
+    {
+    case FIFO: {
+        enable_srpt = false;
+        enable_sdn_kvs = false;
+        enable_sbf = false;
+    }
+    break;
+    case SRPT: {
+        enable_srpt = true;
+        enable_sdn_kvs = false;
+        enable_sbf = false;
+    }
+    break;
+    case SBF: {
+        enable_sbf = true;
+        enable_sdn_kvs = false;
+        enable_srpt = false;
+    }
+    break;
+    case DAS: {
+        // enable_srpt = false;
+        // enable_sbf = false;
+        // enable_sdn_kvs = false;
+    }
+    break;
+    case SDN_KVS:
+    default: {
+        enable_srpt = false;
+        enable_sbf = false;
+        enable_sdn_kvs = true;
+    }
+    }
+
     if (debug)
     {
         // DEBUG LOG
@@ -326,7 +398,7 @@ main(int argc, char* argv[])
     Ptr<Node> controllerNode = CreateObject<Node>();
     // Initialize the SDN-KVS controller
     Ptr<Controller> controller = CreateObject<Controller>();
-
+    controller->SetSdnKvsEnabled(enable_sdn_kvs);
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
     csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Mbps")));
@@ -386,13 +458,13 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(server_port, server_rate, server_tqs, enable_srpt);
+    ServerHelper serverHelper(server_port, server_rate, server_tqs, enable_srpt, enable_sbf);
     serverHelper.Install(serverNodes);
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
     init_request_table(serverNodes);
     // Install client application
-    ClientHelper clientHelper(req_table);
+    ClientHelper clientHelper(req_table, enable_sbf);
     clientHelper.Install(clientNodes);
 
     // Run the simulation

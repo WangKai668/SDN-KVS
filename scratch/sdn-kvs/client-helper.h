@@ -28,7 +28,7 @@ class ClientHelper
      *
      * \param req_table Request table
      */
-    ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table);
+    ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table, bool enable_sbf);
 
     /**
      * Record an attribute to be set in each Application after it is is created.

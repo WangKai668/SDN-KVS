@@ -52,6 +52,11 @@ Server::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&Server::m_srpt_enabled),
                           MakeBooleanChecker())
+            .AddAttribute("SbfEnabled",
+                          "Whether SBF algorithm is enabled on the server.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&Server::m_sbf_enabled),
+                          MakeBooleanChecker())
             // MODIFY END
             .AddTraceSource("Rx",
                             "A packet has been received",
@@ -210,14 +215,28 @@ Server::HandleRead(Ptr<Socket> socket)
         {
             m_queue_size += sdnKvsHeader.GetKsSiz();
             // Build schedule context
-            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from};
+            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from, SRPT};
             // Push the context into the queue
             m_queue.push(ctx);
             if (!m_cur_event.IsRunning())
             {
                 // There is no sending event currently.
                 // Pop the context to set a sending event.
-                ScheduleSrptEvent();
+                ScheduleEvent();
+            }
+        }
+        else if (m_sbf_enabled)
+        {
+            m_queue_size += sdnKvsHeader.GetKsSiz();
+            // Build schedule context
+            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from, SBF};
+            // Push the context into the queue
+            m_queue.push(ctx);
+            if (!m_cur_event.IsRunning())
+            {
+                // There is no sending event currently.
+                // Pop the context to set a sending event.
+                ScheduleEvent();
             }
         }
         else
@@ -264,7 +283,7 @@ Server::HandlePacket(Ptr<Packet> packet)
 }
 
 void
-Server::ScheduleSrptEvent()
+Server::ScheduleEvent()
 {
     if (!m_queue.empty())
     {
@@ -290,14 +309,13 @@ Server::ScheduleSrptEvent()
 void
 Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
 {
-    if (!m_srpt_enabled && m_lst > 0)
+    if (!m_srpt_enabled && !m_sbf_enabled && m_lst > 0)
     {
-        // Update queue size if the queue is not empty(and SRPT algorithm is disabled)
+        // Update queue size if the queue is not empty(and SRPT/sbf algorithm is disabled)
         int64_t cur = Simulator::Now().GetMilliSeconds();
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
         m_lst = m_queue_size ? cur : 0;
     }
-    socket->SendTo(packet, 0, from);
 
     SdnKvsHeader sdnKvsHeader;
     packet->RemoveHeader(sdnKvsHeader);
@@ -305,6 +323,8 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
     packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
+
+    socket->SendTo(packet, 0, from);
     if (InetSocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
@@ -324,8 +344,8 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
 
     // Current sending event has been expired.
     // Set a new sending event if the priority queue is not empty.
-    if (m_srpt_enabled)
+    if (m_srpt_enabled || m_sbf_enabled)
     {
-        ScheduleSrptEvent();
+        ScheduleEvent();
     }
 }

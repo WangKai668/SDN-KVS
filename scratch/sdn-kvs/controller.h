@@ -16,7 +16,7 @@ class Controller : public OFSwitch13Controller
   public:
     Controller();           //!< Default constructor.
     ~Controller() override; //!< Dummy destructor.
-
+    void SetSdnKvsEnabled(bool sdn_kvs_enabled);
     /** Destructor implementation */
     void DoDispose() override;
 
@@ -217,6 +217,7 @@ class Controller : public OFSwitch13Controller
     /**
      * Controller has the whole topology of network.
      */
+    bool m_sdn_kvs_enabled; //!< Whether sdn-kvs algorithm is enabled on the controller
     std::map<uint32_t, Ptr<Node>> m_serverNodes;  //!< Map<server id, server node>
     std::map<uint32_t, Ptr<Node>> m_clientNodes;  //!< Map<client id, client node>
     std::map<std::string, uint32_t> m_ipToServer; //!< Map<ipv4, server id>

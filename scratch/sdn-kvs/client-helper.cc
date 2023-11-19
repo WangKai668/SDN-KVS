@@ -1,5 +1,6 @@
 #include "client-helper.h"
 
+#include <ns3/boolean.h>
 #include <ns3/uinteger.h>
 
 ClientHelper::ClientHelper()
@@ -7,10 +8,12 @@ ClientHelper::ClientHelper()
     m_factory.SetTypeId(Client::GetTypeId());
 }
 
-ClientHelper::ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table)
+ClientHelper::ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table,
+                           bool enable_sbf)
 {
     m_factory.SetTypeId(Client::GetTypeId());
     m_req_table = req_table;
+    SetAttribute("SbfEnabled", BooleanValue(enable_sbf));
 }
 
 void

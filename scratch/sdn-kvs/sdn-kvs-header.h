@@ -75,6 +75,16 @@ class SdnKvsHeader : public Header
     uint16_t GetHeavy() const;
 
     /**
+     * Set keyset size.
+     * \param ks_siz Keyset size.
+     */
+    void SetBottleneckKsSiz(uint32_t bottleneck_ks_siz);
+    /**
+     * Get keyset size.
+     * \return Keyset size.
+     */
+    uint32_t GetBottleneckKsSiz() const;
+    /**
      * \brief Get the type ID.
      * \return the object TypeId
      */
@@ -86,11 +96,12 @@ class SdnKvsHeader : public Header
     uint32_t GetSerializedSize() const override;
 
   private:
-    uint32_t m_req_id;      //!< Request id
-    uint32_t m_ks_siz;      //!< Keyset size
-    uint32_t m_queue_siz;   //!< Server queue size
-    uint32_t m_server_rate; //!< Server handle rate
-    uint16_t m_heavy;       //!< Server heavy status
+    uint32_t m_req_id;            //!< Request id
+    uint32_t m_ks_siz;            //!< Keyset size
+    uint32_t m_bottleneck_ks_siz; //!< Bottleneck keyset size
+    uint32_t m_queue_siz;         //!< Server queue size
+    uint32_t m_server_rate;       //!< Server handle rate
+    uint16_t m_heavy;             //!< Server heavy status
 };
 
 #endif

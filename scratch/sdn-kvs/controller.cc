@@ -23,6 +23,12 @@ Controller::DoDispose()
     OFSwitch13Controller::DoDispose();
 }
 
+void
+Controller::SetSdnKvsEnabled(bool sdn_kvs_enabled)
+{
+    m_sdn_kvs_enabled = sdn_kvs_enabled;
+}
+
 TypeId
 Controller::GetTypeId()
 {
@@ -175,6 +181,7 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
         std::string ip_dst = GetIpv4AddressFromNode(m_serverNodes[i]);
         m_ipToServer[ip_dst] = i; // Map IPv4 to server id
 
+        if (m_sdn_kvs_enabled)
         {
             // Set a flow entry with a higher priority so that
             // all data packets sent from the server node are sent to the controller.

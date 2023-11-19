@@ -2,6 +2,7 @@
 
 #include "sdn-kvs-header.h"
 
+#include "ns3/boolean.h"
 #include "ns3/inet-socket-address.h"
 #include "ns3/inet6-socket-address.h"
 #include "ns3/ipv4-address.h"
@@ -32,6 +33,11 @@ Client::GetTypeId()
                             "A new packet is created and is sent",
                             MakeTraceSourceAccessor(&Client::m_txTrace),
                             "ns3::Packet::TracedCallback")
+            .AddAttribute("SbfEnabled",
+                          "Whether SRPT algorithm is enabled on the server.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&Client::m_sbf_enabled),
+                          MakeBooleanChecker())
             .AddTraceSource("Rx",
                             "A packet has been received",
                             MakeTraceSourceAccessor(&Client::m_rxTrace),
@@ -91,6 +97,13 @@ Client::ScheduleTransmit()
     sdnKvsHeader.SetQueueSiz(0);
     sdnKvsHeader.SetServerRate(0);
     sdnKvsHeader.SetHeavy(0);
+    if (m_sbf_enabled)
+    {
+        sdnKvsHeader.SetBottleneckKsSiz(entry.bottleneck_ks_size);
+    }
+    else
+        sdnKvsHeader.SetBottleneckKsSiz(0);
+
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(sdnKvsHeader);
 

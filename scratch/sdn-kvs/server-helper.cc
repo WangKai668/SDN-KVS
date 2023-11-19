@@ -14,13 +14,18 @@ ServerHelper::ServerHelper(uint16_t port)
     SetAttribute("Port", UintegerValue(port));
 }
 
-ServerHelper::ServerHelper(uint16_t port, uint32_t server_rate, uint32_t tqs, bool enable_srpt)
+ServerHelper::ServerHelper(uint16_t port,
+                           uint32_t server_rate,
+                           uint32_t tqs,
+                           bool enable_srpt,
+                           bool enable_sbf)
 {
     m_factory.SetTypeId(Server::GetTypeId());
     SetAttribute("Port", UintegerValue(port));
     SetAttribute("ServerRate", UintegerValue(server_rate));
     SetAttribute("TQS", UintegerValue(tqs));
     SetAttribute("SrptEnabled", BooleanValue(enable_srpt));
+    SetAttribute("SbfEnabled", BooleanValue(enable_sbf));
 }
 
 void
