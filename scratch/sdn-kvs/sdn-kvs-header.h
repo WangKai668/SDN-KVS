@@ -75,13 +75,13 @@ class SdnKvsHeader : public Header
     uint16_t GetHeavy() const;
 
     /**
-     * Set keyset size.
-     * \param ks_siz Keyset size.
+     * Set Bottleneck keyset size.
+     * \param Bottleneck ks_siz Keyset size.
      */
     void SetBottleneckKsSiz(uint32_t bottleneck_ks_siz);
     /**
-     * Get keyset size.
-     * \return Keyset size.
+     * Get Bottleneck keyset size.
+     * \return Bottleneck Keyset size.
      */
     uint32_t GetBottleneckKsSiz() const;
     /**
