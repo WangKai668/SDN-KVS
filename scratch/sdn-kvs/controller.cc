@@ -180,7 +180,6 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
         std::stringstream ss;
         std::string ip_dst = GetIpv4AddressFromNode(m_serverNodes[i]);
         m_ipToServer[ip_dst] = i; // Map IPv4 to server id
-
         if (m_sdn_kvs_enabled)
         {
             // Set a flow entry with a higher priority so that

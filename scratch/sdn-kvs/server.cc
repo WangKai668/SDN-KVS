@@ -242,7 +242,7 @@ Server::HandleRead(Ptr<Socket> socket)
         else
         {
             HandlePacket(packet);
-
+            std::cout << "fifo ";
             // Schedule send packet event
             Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
@@ -309,16 +309,24 @@ Server::ScheduleEvent()
 void
 Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
 {
+    SdnKvsHeader sdnKvsHeader;
+    packet->RemoveHeader(sdnKvsHeader);
     if (!m_srpt_enabled && !m_sbf_enabled && m_lst > 0)
     {
         // Update queue size if the queue is not empty(and SRPT/sbf algorithm is disabled)
         int64_t cur = Simulator::Now().GetMilliSeconds();
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
         m_lst = m_queue_size ? cur : 0;
+        if (m_queue_size > m_tqs)
+        {
+            // Server overloaded, send signal packet to SDN controller
+            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                    << " is overloaded, set heavy field to 1"
+                                    << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs
+                                    << ")");
+            sdnKvsHeader.SetHeavy(1U);
+        }
     }
-
-    SdnKvsHeader sdnKvsHeader;
-    packet->RemoveHeader(sdnKvsHeader);
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;

@@ -21,12 +21,12 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
  * Parameter configure
  */
 
-SchedulingType schedule_algorithm = SBF;
+SchedulingType schedule_algorithm = FIFO;
 bool enable_srpt = true;     // Whether SRPT algorithm is enabled on the server
 bool enable_sbf = false;     // Whether SBF algorithm is enabled on the server
 bool enable_sdn_kvs = false; // Whether sdn-kvs algorithm is enabled on the controller
 
-bool debug = false;                           // Enable DEBUG log
+bool debug = true;                            // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
@@ -38,7 +38,7 @@ uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
 uint32_t client_num = 5;      // The number of client node
 uint32_t server_num = 5;      // The number of server node
-uint32_t key_num = 3000;      // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 30;
 /**
  * Global variable
@@ -166,6 +166,7 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add)
     return ret - client_num - 1; // Start from 0
 }
 
+// 数据包到达时间是possion过程，相邻数据包的发送间隔服从指数分布
 double
 poisson(double lambda)
 {
@@ -178,8 +179,8 @@ poisson(double lambda)
             break;
         }
     }
-    pV = (-1.0 / lambda) * log(1 - pV);
-    return pV;
+    double interval = (-1.0 / lambda) * log(1 - pV);
+    return interval;
 }
 
 // Generate heavy-tailed distributions of request intervals
@@ -270,10 +271,10 @@ init_request_table(NodeContainer& serverNodes)
     // Initialize send time
     double req_mean = 1.0 * tot_key_num / tot_ks_num;
     double send_time = 0;
+    double t_mean = (1.0 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
-        double t_mean = (1 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
         double double_tNext;
         switch (sendtime_type)
         {
@@ -281,7 +282,7 @@ init_request_table(NodeContainer& serverNodes)
             double r = 0;
             while (true)
             {
-                r = poisson(1 / t_mean);
+                r = poisson(1.0 / t_mean);
                 if (r != 0)
                     break;
             }
