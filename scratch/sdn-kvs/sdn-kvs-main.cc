@@ -334,6 +334,9 @@ init_request_table(NodeContainer& serverNodes)
 int
 main(int argc, char* argv[])
 {
+    // IMPORTANT: CSMA will drop some packets without this line
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(200));
+
     switch (schedule_algorithm)
     {
     case FIFO: {
