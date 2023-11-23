@@ -242,7 +242,6 @@ Server::HandleRead(Ptr<Socket> socket)
         else
         {
             HandlePacket(packet);
-            std::cout << "fifo ";
             // Schedule send packet event
             Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id

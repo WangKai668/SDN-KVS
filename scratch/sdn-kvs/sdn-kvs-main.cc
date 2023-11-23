@@ -26,7 +26,7 @@ bool enable_srpt = true;     // Whether SRPT algorithm is enabled on the server
 bool enable_sbf = false;     // Whether SBF algorithm is enabled on the server
 bool enable_sdn_kvs = false; // Whether sdn-kvs algorithm is enabled on the controller
 
-bool debug = true;                            // Enable DEBUG log
+bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
 KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
@@ -192,7 +192,6 @@ GenerateArriveIntervalPareto(double mean)
     pArrival->SetAttribute("Shape", DoubleValue(2.0));
     // pArrival->SetAttribute("Bound", DoubleValue(0.5));
     double value = pArrival->GetValue();
-    std::cout << "v: " << value << std::endl;
     Time tNext(Seconds(value));
     return tNext;
 }
