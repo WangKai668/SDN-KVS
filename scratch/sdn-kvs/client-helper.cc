@@ -15,6 +15,8 @@ ClientHelper::ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& r
     m_req_table = req_table;
     SetAttribute("SbfEnabled",
                  BooleanValue(algorithm.client_algorithm == ClientSchedulingType::SBF));
+    SetAttribute("DasEnabled",
+                 BooleanValue(algorithm.client_algorithm == ClientSchedulingType::DAS));
 }
 
 void

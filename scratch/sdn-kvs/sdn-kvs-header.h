@@ -84,6 +84,18 @@ class SdnKvsHeader : public Header
      * \return Bottleneck Keyset size.
      */
     uint32_t GetBottleneckKsSiz() const;
+
+    /**
+     * Set priority.
+     * \param priority Priority.
+     */
+    void SetPriority(uint32_t priority);
+    /**
+     * Get priority.
+     * \return Priority.
+     */
+    uint32_t GetPriority() const;
+
     /**
      * \brief Get the type ID.
      * \return the object TypeId
@@ -102,6 +114,11 @@ class SdnKvsHeader : public Header
     uint32_t m_queue_siz;         //!< Server queue size
     uint32_t m_server_rate;       //!< Server handle rate
     uint16_t m_heavy;             //!< Server heavy status
+    /**
+     * Request priority. Used by DAS algorithm.
+     * It is equal to m_ks_siz if DAS algorithm is not enabled.
+     */
+    uint32_t m_priority;
 };
 
 #endif

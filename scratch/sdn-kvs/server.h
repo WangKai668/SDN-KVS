@@ -52,6 +52,9 @@ class Server : public Application
         ServerSchedulingType algorithm;
     };
 
+    /**
+     * Compare function for priority queue
+     */
     struct Compare
     {
         bool operator()(const ScheduleContext& ctx1, const ScheduleContext& ctx2)
@@ -66,7 +69,7 @@ class Server : public Application
             default:
             // used by SRPT algorithm
             case ServerSchedulingType::SRPT:
-                return ctx1.sdnKvsHeader.GetKsSiz() < ctx2.sdnKvsHeader.GetKsSiz();
+                return ctx1.sdnKvsHeader.GetPriority() < ctx2.sdnKvsHeader.GetPriority();
             }
         };
     };
@@ -121,10 +124,6 @@ class Server : public Application
     bool m_srpt_enabled; //!< Whether SRPT algorithm is enabled on the server
     bool m_sbf_enabled;  //!< Whether SBF algorithm is enabled on the server
     EventId m_cur_event; //!< Current sending event
-
-    /**
-     * Compare function for priority queue
-     */
 
     //!< Priority queue used by SRPT/SBF algorithm
     std::priority_queue<ScheduleContext, std::vector<ScheduleContext>, Compare> m_queue;

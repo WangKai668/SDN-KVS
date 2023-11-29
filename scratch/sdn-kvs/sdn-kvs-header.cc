@@ -80,6 +80,18 @@ SdnKvsHeader::GetHeavy() const
     return m_heavy;
 }
 
+void
+SdnKvsHeader::SetPriority(uint32_t priority)
+{
+    m_priority = priority;
+}
+
+uint32_t
+SdnKvsHeader::GetPriority() const
+{
+    return m_priority;
+}
+
 TypeId
 SdnKvsHeader::GetTypeId()
 {
