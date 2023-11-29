@@ -97,12 +97,7 @@ Client::ScheduleTransmit()
     sdnKvsHeader.SetQueueSiz(0);
     sdnKvsHeader.SetServerRate(0);
     sdnKvsHeader.SetHeavy(0);
-    if (m_sbf_enabled)
-    {
-        sdnKvsHeader.SetBottleneckKsSiz(entry.bottleneck_ks_size);
-    }
-    else
-        sdnKvsHeader.SetBottleneckKsSiz(0);
+    sdnKvsHeader.SetBottleneckKsSiz(m_sbf_enabled ? entry.bottleneck_ks_size : 0);
 
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(sdnKvsHeader);

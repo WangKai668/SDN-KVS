@@ -20,12 +20,7 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-
-SchedulingType schedule_algorithm = FIFO;
-bool enable_srpt = true;     // Whether SRPT algorithm is enabled on the server
-bool enable_sbf = false;     // Whether SBF algorithm is enabled on the server
-bool enable_sdn_kvs = false; // Whether sdn-kvs algorithm is enabled on the controller
-
+SchedulingType algorithm = SchedulingStrategy::FIFO;
 bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
@@ -336,40 +331,6 @@ main(int argc, char* argv[])
     // IMPORTANT: CSMA will drop some packets without this line
     Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(200));
 
-    switch (schedule_algorithm)
-    {
-    case FIFO: {
-        enable_srpt = false;
-        enable_sdn_kvs = false;
-        enable_sbf = false;
-    }
-    break;
-    case SRPT: {
-        enable_srpt = true;
-        enable_sdn_kvs = false;
-        enable_sbf = false;
-    }
-    break;
-    case SBF: {
-        enable_sbf = true;
-        enable_sdn_kvs = false;
-        enable_srpt = false;
-    }
-    break;
-    case DAS: {
-        // enable_srpt = false;
-        // enable_sbf = false;
-        // enable_sdn_kvs = false;
-    }
-    break;
-    case SDN_KVS:
-    default: {
-        enable_srpt = false;
-        enable_sbf = false;
-        enable_sdn_kvs = true;
-    }
-    }
-
     if (debug)
     {
         // DEBUG LOG
@@ -401,6 +362,8 @@ main(int argc, char* argv[])
     Ptr<Node> controllerNode = CreateObject<Node>();
     // Initialize the SDN-KVS controller
     Ptr<Controller> controller = CreateObject<Controller>();
+    // Whether SDN-KVS algorithm is enabled on the controller
+    bool enable_sdn_kvs = algorithm.controller_algorithm == ControllerSchedulingType::SDN_KVS;
     controller->SetSdnKvsEnabled(enable_sdn_kvs);
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
@@ -461,13 +424,13 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(server_port, server_rate, server_tqs, enable_srpt, enable_sbf);
+    ServerHelper serverHelper(server_port, server_rate, server_tqs, algorithm);
     serverHelper.Install(serverNodes);
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
     init_request_table(serverNodes);
     // Install client application
-    ClientHelper clientHelper(req_table, enable_sbf);
+    ClientHelper clientHelper(req_table, algorithm);
     clientHelper.Install(clientNodes);
 
     // Run the simulation

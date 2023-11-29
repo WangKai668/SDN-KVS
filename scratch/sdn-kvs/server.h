@@ -49,7 +49,7 @@ class Server : public Application
         Ptr<Socket> socket;
         Ptr<Packet> packet;
         Address from;
-        SchedulingType algorithm;
+        ServerSchedulingType algorithm;
     };
 
     struct Compare
@@ -59,13 +59,13 @@ class Server : public Application
             switch (ctx1.algorithm)
             {
             // used by SBF algorithm
-            case SBF:
+            case ServerSchedulingType::SBF:
                 return ctx1.sdnKvsHeader.GetBottleneckKsSiz() <
                        ctx2.sdnKvsHeader.GetBottleneckKsSiz();
                 break;
             default:
             // used by SRPT algorithm
-            case SRPT:
+            case ServerSchedulingType::SRPT:
                 return ctx1.sdnKvsHeader.GetKsSiz() < ctx2.sdnKvsHeader.GetKsSiz();
             }
         };
