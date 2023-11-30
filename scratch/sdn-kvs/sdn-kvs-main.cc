@@ -36,9 +36,9 @@ uint32_t simTime = 100;                       // Simulator running time(unit: se
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
 uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
-uint32_t client_num = 5;      // The number of client node
-uint32_t server_num = 5;      // The number of server node
-uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t client_num = 15;     // The number of client node
+uint32_t server_num = 15;     // The number of server node
+uint32_t key_num = 10000;     // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 30;
 /**
  * Global variable
@@ -334,7 +334,7 @@ int
 main(int argc, char* argv[])
 {
     // IMPORTANT: CSMA will drop some packets without this line
-    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(200));
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(1000));
 
     switch (schedule_algorithm)
     {

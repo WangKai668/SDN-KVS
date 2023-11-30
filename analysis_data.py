@@ -13,6 +13,7 @@
 import re
 import sys
 import os.path
+import numpy as np
 
 pattern = r"\[Client\]\[\+(.*?)s\].*?req_id=(\d+)"
 request_sent_time = {}
@@ -37,10 +38,19 @@ if os.path.exists(file_path):
             else:
               request_receive_time[int(request_id)] = float(time) if request_receive_time[request_id] < float(time) else request_receive_time[request_id]
 
-  request_sent_time_sorted = {k: request_sent_time[k] for k in sorted(request_sent_time)}
-  request_receive_time_sorted = {k: request_receive_time[k] for k in sorted(request_receive_time)}
-  
-  print(request_sent_time_sorted)
-  print(request_receive_time_sorted)
+  if len(request_receive_time) == len(request_sent_time):
+    response_time=[]
+    for k in request_receive_time:
+      response_time.append(request_receive_time[k]-request_sent_time[k])
+    response_time_sorted = sorted(response_time)
+    p99 = np.percentile(response_time_sorted, 99)
+    p95 = np.percentile(response_time_sorted, 95)
+    print(sum(response_time_sorted)/len(response_time_sorted),p95,p99)
+  else:
+    print("error! There is packet loss")
+    request_sent_time_sorted = {k: request_sent_time[k] for k in sorted(request_sent_time)}
+    request_receive_time_sorted = {k: request_receive_time[k] for k in sorted(request_receive_time)}
+    print(len(request_sent_time_sorted),request_sent_time_sorted)
+    print(len(request_receive_time_sorted),request_receive_time_sorted)
 else:
   print("file not exists!")
