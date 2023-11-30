@@ -34,9 +34,14 @@ Client::GetTypeId()
                             MakeTraceSourceAccessor(&Client::m_txTrace),
                             "ns3::Packet::TracedCallback")
             .AddAttribute("SbfEnabled",
-                          "Whether SRPT algorithm is enabled on the server.",
+                          "Whether SBF algorithm is enabled on the client.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&Client::m_sbf_enabled),
+                          MakeBooleanChecker())
+            .AddAttribute("DasEnabled",
+                          "Whether DAS algorithm is enabled on the client.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&Client::m_das_enabled),
                           MakeBooleanChecker())
             .AddTraceSource("Rx",
                             "A packet has been received",
@@ -97,12 +102,9 @@ Client::ScheduleTransmit()
     sdnKvsHeader.SetQueueSiz(0);
     sdnKvsHeader.SetServerRate(0);
     sdnKvsHeader.SetHeavy(0);
-    if (m_sbf_enabled)
-    {
-        sdnKvsHeader.SetBottleneckKsSiz(entry.bottleneck_ks_size);
-    }
-    else
-        sdnKvsHeader.SetBottleneckKsSiz(0);
+    sdnKvsHeader.SetBottleneckKsSiz(m_sbf_enabled ? entry.bottleneck_ks_size : 0);
+    if (!m_das_enabled)
+        sdnKvsHeader.SetPriority(entry.ks_siz);
 
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(sdnKvsHeader);

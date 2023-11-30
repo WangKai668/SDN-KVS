@@ -31,12 +31,49 @@ enum KeysetSizeType
     LIGHT  // Light
 };
 
-enum SchedulingType
+enum class ServerSchedulingType
 {
-    FIFO,
     SRPT,
     SBF,
-    SDN_KVS,
-    DAS
+    NONE // No scheduling. FIFO
 };
+
+enum class ClientSchedulingType
+{
+    DAS,
+    SBF,
+    NONE // No Scheduling. Sent according to request table.
+};
+
+enum class ControllerSchedulingType
+{
+    SDN_KVS,
+    NONE // No scheduling. No packets will be forwarded to the controller
+};
+
+struct SchedulingType
+{
+    ServerSchedulingType server_algorithm;
+    ClientSchedulingType client_algorithm;
+    ControllerSchedulingType controller_algorithm;
+};
+
+namespace SchedulingStrategy
+{
+__attribute__((unused)) static SchedulingType FIFO = {ServerSchedulingType::NONE,
+                                                      ClientSchedulingType::NONE,
+                                                      ControllerSchedulingType::NONE};
+__attribute__((unused)) static SchedulingType SRPT = {ServerSchedulingType::SRPT,
+                                                      ClientSchedulingType::NONE,
+                                                      ControllerSchedulingType::NONE};
+__attribute__((unused)) static SchedulingType SBF = {ServerSchedulingType::SBF,
+                                                     ClientSchedulingType::SBF,
+                                                     ControllerSchedulingType::NONE};
+__attribute__((unused)) static SchedulingType DAS = {ServerSchedulingType::SRPT,
+                                                     ClientSchedulingType::DAS,
+                                                     ControllerSchedulingType::NONE};
+__attribute__((unused)) static SchedulingType SDN_KVS = {ServerSchedulingType::NONE,
+                                                         ClientSchedulingType::NONE,
+                                                         ControllerSchedulingType::SDN_KVS};
+} // namespace SchedulingStrategy
 #endif

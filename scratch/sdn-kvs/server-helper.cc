@@ -17,15 +17,16 @@ ServerHelper::ServerHelper(uint16_t port)
 ServerHelper::ServerHelper(uint16_t port,
                            uint32_t server_rate,
                            uint32_t tqs,
-                           bool enable_srpt,
-                           bool enable_sbf)
+                           SchedulingType algorithm)
 {
     m_factory.SetTypeId(Server::GetTypeId());
     SetAttribute("Port", UintegerValue(port));
     SetAttribute("ServerRate", UintegerValue(server_rate));
     SetAttribute("TQS", UintegerValue(tqs));
-    SetAttribute("SrptEnabled", BooleanValue(enable_srpt));
-    SetAttribute("SbfEnabled", BooleanValue(enable_sbf));
+    SetAttribute("SrptEnabled",
+                 BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SRPT));
+    SetAttribute("SbfEnabled",
+                 BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SBF));
 }
 
 void

@@ -240,8 +240,6 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
             if (kv == 0)
                 continue;
             double weight = req_weight[req_id] / kv;
-            NS_LOG_UNCOND("DEBUG: " << weight << " " << sid << " " << req_id << " "
-                                    << req_weight[req_id] << " " << SumKeyset(req_id, sid));
             if (weight > mx)
                 continue;
             mx = weight;

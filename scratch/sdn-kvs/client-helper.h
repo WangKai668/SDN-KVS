@@ -27,8 +27,10 @@ class ClientHelper
      * to set up simulations with SDN-KVS client application.
      *
      * \param req_table Request table
+     * \param algorithm The scheduling algorithm running on the client
      */
-    ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table, bool enable_sbf);
+    ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table,
+                 SchedulingType algorithm);
 
     /**
      * Record an attribute to be set in each Application after it is is created.
