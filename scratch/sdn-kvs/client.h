@@ -39,6 +39,45 @@ class Client : public Application
     void DoDispose() override;
 
   private:
+    /**
+     * For DAS algorithm
+     */
+    struct Server
+    {
+        uint32_t osk; // The number of sending packet to this server
+        double server_rate;
+        double capacity;
+    };
+
+    /**
+     * For DAS algorithm
+     */
+    struct Keyset
+    {
+        uint32_t dst_server; // Destination server id(start from 0)
+        std::string dst_ip;  // Destination server IPv4 address string
+        uint16_t dst_port;   // Destination server port
+        uint32_t ks_siz;     // Keyset size
+        uint32_t bottleneck_ks_size;
+        bool is_sent;
+    };
+
+    /**
+     * For DAS algorithm
+     */
+    struct Request
+    {
+        double st;                   // Send time (keysets from the same request are equal)
+        uint32_t src_client;         // Source client id(start from 0)
+        uint32_t req_id;             // Request id that the packet belongs to
+        std::vector<Keyset> keysets; // Keysets of this request
+
+        bool operator<(const Request& req) const
+        {
+            return req_id < req.req_id;
+        }
+    };
+
     void StartApplication() override;
     void StopApplication() override;
 
@@ -67,6 +106,42 @@ class Client : public Application
     void HandleRead(Ptr<Socket> socket);
 
     /**
+     * DAS Sort algorithm
+     */
+    void SortRequests();
+
+    /**
+     * Prepare ns3 event for adding request into waiting list
+     */
+    void ScheduleRequestEvent();
+
+    /**
+     * Do DAS schedule algorithm(Add request into waiting list, etc.)
+     */
+    void HandleRequestEvent(Request request);
+
+    /**
+     * Send packet to server when DAS enabled
+     */
+    void SendOne(uint32_t server_id);
+
+    /**
+     * Assign priority for a keyset when DAS enabled
+     * \return Keyset priority
+     */
+    uint32_t AssignPriority(Request req);
+
+    /**
+     * Get keyset sum for a specific request and output server id.
+     */
+    uint32_t SumKeyset(uint32_t req_id, uint32_t server_id);
+
+    /**
+     * Find bottleneck server
+     */
+    uint32_t FindBottleneckServer(std::set<Request>& req_set);
+
+    /**
      * \brief Schedule the next packet transmission
      */
     void ScheduleTransmit();
@@ -75,6 +150,15 @@ class Client : public Application
     bool m_sbf_enabled; //!< Whether SBF algorithm is enabled on the client
     bool m_das_enabled; //!< Whether DAS algorithm is enabled on the client
     uint32_t m_cur = 0; //!< Next request list index to be schedule
+
+    /**
+     * Variable used for DAS
+     */
+    std::vector<Request> m_request_vec;           //!< Requests waiting for sending
+    std::map<uint32_t, Server> m_servers;         //!< Server information
+    std::map<std::string, uint32_t> m_ipToServer; //!< Map<IPv4 string, Server id>
+    std::map<std::pair<uint32_t, uint32_t>, Time>
+        m_ksSendTime; //!< Keyset sending time. Map<(req_id, server_id), send time>
 
     /// Callbacks for tracing the packet Tx events
     TracedCallback<Ptr<const Packet>> m_txTrace;

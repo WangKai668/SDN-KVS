@@ -20,7 +20,7 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-SchedulingType algorithm = SchedulingStrategy::FIFO;
+SchedulingType algorithm = SchedulingStrategy::DAS;
 bool debug = false;                           // Enable DEBUG log
 bool ifZipfian = true;                        // Whether there is a hotspot server
 DistributionType distribution_type = POSSION; // The distribution type for generating key
