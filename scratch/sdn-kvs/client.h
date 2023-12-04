@@ -116,9 +116,14 @@ class Client : public Application
     void ScheduleRequestEvent();
 
     /**
+     * Check if all keysets of the request has been sent
+     */
+    bool IsAllSent(Request request);
+
+    /**
      * Do DAS schedule algorithm(Add request into waiting list, etc.)
      */
-    void HandleRequestEvent(Request request);
+    void HandleRequestEvent(Request request, bool is_last);
 
     /**
      * Send packet to server when DAS enabled

@@ -31,9 +31,9 @@ uint32_t simTime = 100;                       // Simulator running time(unit: se
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
 uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
-uint32_t client_num = 15;     // The number of client node
-uint32_t server_num = 15;     // The number of server node
-uint32_t key_num = 10000;     // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t client_num = 5;      // The number of client node
+uint32_t server_num = 5;      // The number of server node
+uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 30;
 /**
  * Global variable
@@ -264,7 +264,7 @@ init_request_table(NodeContainer& serverNodes)
 
     // Initialize send time
     double req_mean = 1.0 * tot_key_num / tot_ks_num;
-    double send_time = 0;
+    double send_time = 2;
     double t_mean = (1.0 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
@@ -329,7 +329,9 @@ int
 main(int argc, char* argv[])
 {
     // IMPORTANT: CSMA will drop some packets without this line
-    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(1000));
+    Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(10000));
+    Config::SetDefault("ns3::ArpCache::WaitReplyTimeout", TimeValue(Seconds(10)));
+    Config::SetDefault("ns3::ArpCache::MaxRetries", UintegerValue(300));
 
     if (debug)
     {
@@ -367,7 +369,7 @@ main(int argc, char* argv[])
     controller->SetSdnKvsEnabled(enable_sdn_kvs);
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
-    csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Mbps")));
+    csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Gbps")));
     csmaHelper.SetChannelAttribute("Delay", TimeValue(MilliSeconds(2)));
 
     // Net devices of all nodes for assigning IPv4 address later

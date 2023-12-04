@@ -145,7 +145,8 @@ Client::Send(Ptr<Packet> packet, std::string dst_ip, uint16_t dst_port)
     NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Sent SDN-KVS packet" << ss.str()
                             << " to " << Ipv4Address::ConvertFrom(peerAddress) << " port "
                             << dst_port);
-    ScheduleTransmit();
+    if (!m_das_enabled)
+        ScheduleTransmit();
 }
 
 Ptr<Socket>
@@ -219,36 +220,55 @@ Client::ScheduleRequestEvent()
             m_ipToServer[ks.dst_ip] = ks.dst_server;
         }
     }
+    uint32_t cnt = 0;
     for (const auto& [req_id, req] : requests)
     {
-        Simulator::Schedule(Seconds(req.st), &Client::HandleRequestEvent, this, req);
+        ++cnt;
+        Simulator::Schedule(Seconds(req.st),
+                            &Client::HandleRequestEvent,
+                            this,
+                            req,
+                            cnt == requests.size());
     }
 }
 
 void
-Client::HandleRequestEvent(Request request)
+Client::HandleRequestEvent(Request request, bool is_last)
 {
     m_request_vec.push_back(request);
-    // SortRequests();
+    SortRequests();
     for (auto& [server_id, server] : m_servers)
     {
         if (server.osk)
             continue;
         SendOne(server_id);
     }
+    if (is_last)
+        NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] All requests has been sent");
 }
+
+bool
+Client::IsAllSent(Request request)
+{
+    for (const auto& ks : request.keysets)
+        if (!ks.is_sent)
+            return false;
+    return true;
+};
 
 void
 Client::SortRequests()
 {
     std::set<Request> req_set;
     std::map<uint32_t, double> req_weight;
+    std::vector<Request> ans;
     for (auto& req : m_request_vec)
     {
+        if (IsAllSent(req))
+            continue;
         req_set.insert(req);
         req_weight[req.req_id] = 1;
     }
-    m_request_vec.clear();
     while (!req_set.empty())
     {
         // Find server with the largest load
@@ -259,20 +279,24 @@ Client::SortRequests()
         for (const auto& req : req_set)
         {
             double val = req_weight[req.req_id] / SumKeyset(req.req_id, server_id);
-            if (val < mn)
+            if (val <= mn)
                 mn = val, target_req = req;
         }
         //  Scale the weights
         double target_weight = req_weight[target_req.req_id];
         for (auto& [req_id, weight] : req_weight)
         {
+            if (req_id == target_req.req_id)
+                continue;
             weight -= (target_weight * SumKeyset(req_id, server_id) /
                        SumKeyset(target_req.req_id, server_id));
         }
         //  Update the set of unscheduled requests for Iteration
-        m_request_vec.push_back(target_req);
+        ans.push_back(target_req);
         req_set.erase(target_req);
+        req_weight.erase(target_req.req_id);
     }
+    m_request_vec.assign(ans.begin(), ans.end());
 }
 
 uint32_t
@@ -381,26 +405,6 @@ Client::HandleRead(Ptr<Socket> socket)
         SdnKvsHeader sdnKvsHeader;
         packet->PeekHeader(sdnKvsHeader);
         std::stringstream ss;
-        if (m_das_enabled)
-        {
-            double alpha = 0.1;
-            double beta = 0.1;
-            InetSocketAddress::ConvertFrom(from).GetIpv4().Print(ss);
-            uint32_t server_id = m_ipToServer[ss.str()];
-            m_servers[server_id].osk = 0;
-            m_servers[server_id].server_rate =
-                beta * m_servers[server_id].server_rate + (1 - beta) * sdnKvsHeader.GetServerRate();
-            auto key = std::pair<uint32_t, uint32_t>(sdnKvsHeader.GetReqId(), server_id);
-            Time send_time = m_ksSendTime[key];
-            Time recv_time = Simulator::Now();
-            int64_t dt = recv_time.GetMilliSeconds() - send_time.GetMilliSeconds();
-            m_servers[server_id].capacity = alpha * m_servers[server_id].capacity +
-                                            (1 - alpha) * (sdnKvsHeader.GetKsSiz() / dt);
-            // Avoid map being much large
-            m_ksSendTime.erase(key);
-            SendOne(server_id);
-        }
-        ss.str("");
         sdnKvsHeader.Print(ss);
         if (InetSocketAddress::IsMatchingType(from))
         {
@@ -419,6 +423,27 @@ Client::HandleRead(Ptr<Socket> socket)
         socket->GetSockName(localAddress);
         m_rxTrace(packet);
         m_rxTraceWithAddresses(packet, from, localAddress);
+
+        if (m_das_enabled)
+        {
+            ss.str("");
+            double alpha = 0.1;
+            double beta = 0.1;
+            InetSocketAddress::ConvertFrom(from).GetIpv4().Print(ss);
+            uint32_t server_id = m_ipToServer[ss.str()];
+            m_servers[server_id].osk = 0;
+            m_servers[server_id].server_rate =
+                beta * m_servers[server_id].server_rate + (1 - beta) * sdnKvsHeader.GetServerRate();
+            auto key = std::pair<uint32_t, uint32_t>(sdnKvsHeader.GetReqId(), server_id);
+            Time send_time = m_ksSendTime[key];
+            Time recv_time = Simulator::Now();
+            int64_t dt = recv_time.GetMilliSeconds() - send_time.GetMilliSeconds();
+            m_servers[server_id].capacity = alpha * m_servers[server_id].capacity +
+                                            (1 - alpha) * (sdnKvsHeader.GetKsSiz() / dt);
+            // Avoid map being much large
+            m_ksSendTime.erase(key);
+            SendOne(server_id);
+        }
     }
 
     // Completed
