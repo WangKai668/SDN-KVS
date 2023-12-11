@@ -263,10 +263,10 @@ init_request_table(NodeContainer& serverNodes)
     }
 
     // Initialize send time
-    double req_mean = 1.0 * tot_key_num / tot_ks_num;
+    // double req_mean = 1.0 * tot_key_num / tot_ks_num;
+    double req_mean = request_size;
     double send_time = 2;
-    double t_mean =
-        (client_num * req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
+    double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
