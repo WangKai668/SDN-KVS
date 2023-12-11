@@ -20,7 +20,7 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-SchedulingType algorithm = SchedulingStrategy::SRPT;
+SchedulingType algorithm = SchedulingStrategy::FIFO;
 bool debug = false;                                   // Enable DEBUG log
 bool ifZipfian = true;                                // Whether there is a hotspot server
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
@@ -371,7 +371,7 @@ main(int argc, char* argv[])
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
     csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Gbps")));
-    csmaHelper.SetChannelAttribute("Delay", TimeValue(MilliSeconds(2)));
+    csmaHelper.SetChannelAttribute("Delay", TimeValue(MicroSeconds(20)));
 
     // Net devices of all nodes for assigning IPv4 address later
     NetDeviceContainer nodeDevices;
