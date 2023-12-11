@@ -20,20 +20,20 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-SchedulingType algorithm = SchedulingStrategy::DAS;
-bool debug = false;                           // Enable DEBUG log
-bool ifZipfian = true;                        // Whether there is a hotspot server
-DistributionType distribution_type = POSSION; // The distribution type for generating key
-KeysetSizeType keyset_size_type = LIGHT;      // The keyset size type
-KeysetSizeType sendtime_type = LIGHT;         // The keyset size type
-double uti = 0.7;                             // Utilization
-uint32_t simTime = 100;                       // Simulator running time(unit: second)
+SchedulingType algorithm = SchedulingStrategy::SRPT;
+bool debug = false;                                   // Enable DEBUG log
+bool ifZipfian = true;                                // Whether there is a hotspot server
+DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
+KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
+KeysetSizeType sendtime_type = HEAVY;                 // The keyset size type
+double uti = 0.7;                                     // Utilization
+uint32_t simTime = 1000;                              // Simulator running time(unit: second)
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
 uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
-uint32_t client_num = 5;      // The number of client node
-uint32_t server_num = 5;      // The number of server node
-uint32_t key_num = 1000;      // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t client_num = 15;     // The number of client node
+uint32_t server_num = 15;     // The number of server node
+uint32_t key_num = 30000;     // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 30;
 /**
  * Global variable
@@ -50,7 +50,7 @@ uint32_t
 generate_req_size()
 {
     uint32_t ret = 0;
-    switch (distribution_type)
+    switch (req_size_distribution_type)
     {
     case POSSION: {
         Ptr<UniformRandomVariable> x = CreateObject<UniformRandomVariable>();
@@ -265,7 +265,8 @@ init_request_table(NodeContainer& serverNodes)
     // Initialize send time
     double req_mean = 1.0 * tot_key_num / tot_ks_num;
     double send_time = 2;
-    double t_mean = (1.0 / (server_rate * 1000.0)) * req_mean / (uti * double(server_num));
+    double t_mean =
+        (client_num * req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
