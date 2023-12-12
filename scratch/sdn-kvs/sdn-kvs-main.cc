@@ -20,12 +20,12 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-SchedulingType algorithm = SchedulingStrategy::SDN_KVS;
+SchedulingType algorithm = SchedulingStrategy::FIFO;
 bool debug = false;                                   // Enable DEBUG log
 bool ifZipfian = true;                                // Whether there is a hotspot server
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
 KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
-KeysetSizeType sendtime_type = HEAVY;                 // The keyset size type
+KeysetSizeType sendtime_type = HEAVY;                 // The send time type
 double uti = 0.7;                                     // Utilization
 uint32_t simTime = 1000;                              // Simulator running time(unit: second)
 uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
@@ -326,9 +326,111 @@ init_request_table(NodeContainer& serverNodes)
     }
 }
 
+void
+init_parameter(int argc, char* argv[])
+{
+    CommandLine cmd;
+    uint32_t algorithm_index = 0;         // Default: FIFO
+    uint32_t distribution_type_index = 0; // Default: POSSION
+    uint32_t keyset_size_type_index = 0;  // Default: HEAVY
+    uint32_t sendtime_type_index = 0;     // Default: HEAVY
+    cmd.AddValue("algorithm",
+                 "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
+                 algorithm_index);
+    cmd.AddValue("debug", "Enable DEBUG log", debug);
+    cmd.AddValue("ifZipfian", "Whether there is a hotspot server", ifZipfian);
+    cmd.AddValue("distribution_type",
+                 "The distribution type for generating key(0: POSSION, 1: PARETO)",
+                 distribution_type_index);
+    cmd.AddValue("keyset_size_type",
+                 "The keyset size type(0: HEAVY, 1: LIGHT)",
+                 keyset_size_type_index);
+    cmd.AddValue("sendtime_type", "The send time type(0: HEAVY, 1: LIGHT)", sendtime_type_index);
+    cmd.AddValue("uti", "Utilization", uti);
+    cmd.AddValue("simTime", "Simulator running time(unit: second)", simTime);
+    cmd.AddValue("server_rate",
+                 "Server handle rate. (Number of keys processed per millisecond)",
+                 server_rate);
+    cmd.AddValue("server_tqs", "Server TQS", server_tqs);
+    cmd.AddValue("client_num", "The number of client node", client_num);
+    cmd.AddValue("server_num", "The number of server node", server_num);
+    cmd.AddValue("key_num",
+                 "The upper bound of the total number of keys(n keys = 1 keyset)",
+                 key_num);
+    cmd.Parse(argc, argv);
+
+    switch (algorithm_index)
+    {
+    case 1:
+        algorithm = SchedulingStrategy::SRPT;
+        break;
+    case 2:
+        algorithm = SchedulingStrategy::SBF;
+        break;
+    case 3:
+        algorithm = SchedulingStrategy::DAS;
+        break;
+    case 4:
+        algorithm = SchedulingStrategy::SDN_KVS;
+        break;
+    case 0:
+    default:
+        algorithm = SchedulingStrategy::FIFO;
+    }
+
+    switch (distribution_type_index)
+    {
+    case 1:
+        req_size_distribution_type = PARETO;
+        break;
+    case 0:
+    default:
+        req_size_distribution_type = POSSION;
+    }
+
+    switch (keyset_size_type_index)
+    {
+    case 1:
+        keyset_size_type = LIGHT;
+        break;
+    case 0:
+    default:
+        keyset_size_type = HEAVY;
+    }
+
+    switch (sendtime_type_index)
+    {
+    case 1:
+        sendtime_type = LIGHT;
+        break;
+    case 0:
+    default:
+        sendtime_type = HEAVY;
+    }
+
+    // Print the parameter
+    NS_LOG_UNCOND("===== Parameter configure =====");
+    NS_LOG_UNCOND(" - algorithm = " << algorithm);
+    NS_LOG_UNCOND(" - debug = " << debug);
+    NS_LOG_UNCOND(" - ifZipfian = " << ifZipfian);
+    NS_LOG_UNCOND(" - distribution_type = " << req_size_distribution_type);
+    NS_LOG_UNCOND(" - keyset_size_type = " << keyset_size_type);
+    NS_LOG_UNCOND(" - sendtime_type = " << sendtime_type);
+    NS_LOG_UNCOND(" - uti = " << uti);
+    NS_LOG_UNCOND(" - simTime = " << simTime);
+    NS_LOG_UNCOND(" - server_rate = " << server_rate);
+    NS_LOG_UNCOND(" - server_tqs = " << server_tqs);
+    NS_LOG_UNCOND(" - client_num = " << client_num);
+    NS_LOG_UNCOND(" - server_num = " << server_num);
+    NS_LOG_UNCOND(" - key_num = " << key_num);
+    NS_LOG_UNCOND(" - request_size = " << request_size);
+}
+
 int
 main(int argc, char* argv[])
 {
+    init_parameter(argc, argv);
+
     // IMPORTANT: CSMA will drop some packets without this line
     Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(10000));
     Config::SetDefault("ns3::ArpCache::WaitReplyTimeout", TimeValue(Seconds(10)));

@@ -56,24 +56,121 @@ struct SchedulingType
     ServerSchedulingType server_algorithm;
     ClientSchedulingType client_algorithm;
     ControllerSchedulingType controller_algorithm;
+    std::string name;
 };
 
+inline std::ostream&
+operator<<(std::ostream& os, DistributionType c)
+{
+    switch (c)
+    {
+    case PARETO:
+        os << "PARETO";
+        break;
+    case POSSION:
+    default:
+        os << "POSSION";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, KeysetSizeType c)
+{
+    switch (c)
+    {
+    case LIGHT:
+        os << "LIGHT";
+        break;
+    case HEAVY:
+    default:
+        os << "HEAVY";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, ServerSchedulingType c)
+{
+    switch (c)
+    {
+    case ServerSchedulingType::SRPT:
+        os << "SRPT";
+        break;
+    case ServerSchedulingType::SBF:
+        os << "SBF";
+        break;
+    case ServerSchedulingType::NONE:
+    default:
+        os << "NONE";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, ClientSchedulingType c)
+{
+    switch (c)
+    {
+    case ClientSchedulingType::DAS:
+        os << "DAS";
+        break;
+    case ClientSchedulingType::SBF:
+        os << "SBF";
+        break;
+    case ClientSchedulingType::NONE:
+    default:
+        os << "NONE";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, ControllerSchedulingType c)
+{
+    switch (c)
+    {
+    case ControllerSchedulingType::SDN_KVS:
+        os << "SDN_KVS";
+        break;
+    case ControllerSchedulingType::NONE:
+    default:
+        os << "NONE";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, SchedulingType type)
+{
+    os << type.name << "(server_algorithm: " << type.server_algorithm
+       << ", client_algorithm: " << type.client_algorithm
+       << ", controller_algorithm: " << type.controller_algorithm << ")";
+    return os;
+}
+
 namespace SchedulingStrategy
+
 {
 __attribute__((unused)) static SchedulingType FIFO = {ServerSchedulingType::NONE,
                                                       ClientSchedulingType::NONE,
-                                                      ControllerSchedulingType::NONE};
+                                                      ControllerSchedulingType::NONE,
+                                                      "FIFO"};
 __attribute__((unused)) static SchedulingType SRPT = {ServerSchedulingType::SRPT,
                                                       ClientSchedulingType::NONE,
-                                                      ControllerSchedulingType::NONE};
+                                                      ControllerSchedulingType::NONE,
+                                                      "SRPT"};
 __attribute__((unused)) static SchedulingType SBF = {ServerSchedulingType::SBF,
                                                      ClientSchedulingType::SBF,
-                                                     ControllerSchedulingType::NONE};
+                                                     ControllerSchedulingType::NONE,
+                                                     "SBF"};
 __attribute__((unused)) static SchedulingType DAS = {ServerSchedulingType::SRPT,
                                                      ClientSchedulingType::DAS,
-                                                     ControllerSchedulingType::NONE};
+                                                     ControllerSchedulingType::NONE,
+                                                     "DAS"};
 __attribute__((unused)) static SchedulingType SDN_KVS = {ServerSchedulingType::NONE,
                                                          ClientSchedulingType::NONE,
-                                                         ControllerSchedulingType::SDN_KVS};
+                                                         ControllerSchedulingType::SDN_KVS,
+                                                         "SDN-KVS"};
 } // namespace SchedulingStrategy
 #endif
