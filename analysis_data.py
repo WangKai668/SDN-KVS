@@ -19,16 +19,20 @@ pattern = r"\[Client\]\[\+(.*?)s\].*?req_id=(\d+)"
 request_sent_time = {}
 request_receive_time={}
 file_path = sys.argv[1]
+sent_cnt = 0
+receive_cnt = 0
 if os.path.exists(file_path):
   with open(file_path, 'r') as file:
       for line in file:
         if 'Sent' in line:
+          sent_cnt += 1
           match = re.search(pattern, line)
           if match:
             time = match.group(1)
             request_id = match.group(2)
             request_sent_time[int(request_id)] = float(time)
         if 'Received' in line:
+          receive_cnt += 1
           match = re.search(pattern, line)
           if match:
             time = match.group(1)
@@ -38,7 +42,7 @@ if os.path.exists(file_path):
             else:
               request_receive_time[int(request_id)] = float(time) if request_receive_time[request_id] < float(time) else request_receive_time[request_id]
 
-  if len(request_receive_time) == len(request_sent_time):
+  if sent_cnt == receive_cnt:
     response_time=[]
     for k in request_receive_time:
       response_time.append(request_receive_time[k]-request_sent_time[k])

@@ -21,8 +21,9 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
  * Parameter configure
  */
 SchedulingType algorithm = SchedulingStrategy::FIFO;
-bool debug = false;                                   // Enable DEBUG log
-bool ifZipfian = true;                                // Whether there is a hotspot server
+bool debug = false;    // Enable DEBUG log
+bool mute = false;     // Only print client application logs for analysis
+bool ifZipfian = true; // Whether there is a hotspot server
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
 KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
 KeysetSizeType sendtime_type = HEAVY;                 // The send time type
@@ -338,6 +339,7 @@ init_parameter(int argc, char* argv[])
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
                  algorithm_index);
     cmd.AddValue("debug", "Enable DEBUG log", debug);
+    cmd.AddValue("mute", "Only print client application logs for analysis", mute);
     cmd.AddValue("ifZipfian", "Whether there is a hotspot server", ifZipfian);
     cmd.AddValue("distribution_type",
                  "The distribution type for generating key(0: POSSION, 1: PARETO)",
@@ -412,6 +414,7 @@ init_parameter(int argc, char* argv[])
     NS_LOG_UNCOND("===== Parameter configure =====");
     NS_LOG_UNCOND(" - algorithm = " << algorithm);
     NS_LOG_UNCOND(" - debug = " << debug);
+    NS_LOG_UNCOND(" - mute = " << mute);
     NS_LOG_UNCOND(" - ifZipfian = " << ifZipfian);
     NS_LOG_UNCOND(" - distribution_type = " << req_size_distribution_type);
     NS_LOG_UNCOND(" - keyset_size_type = " << keyset_size_type);
@@ -449,8 +452,11 @@ main(int argc, char* argv[])
         LogComponentEnable("OFSwitch13Helper", LOG_LEVEL_ALL);
         LogComponentEnable("OFSwitch13InternalHelper", LOG_LEVEL_ALL);
     }
-    LogComponentEnable("Controller", LOG_LEVEL_ALL);
-    LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
+    if (!mute)
+    {
+        LogComponentEnable("Controller", LOG_LEVEL_ALL);
+        LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
+    }
     LogComponentEnable("ClientApplication", LOG_LEVEL_ALL);
 
     // Enable checksum computations (required by OFSwitch13 module)
