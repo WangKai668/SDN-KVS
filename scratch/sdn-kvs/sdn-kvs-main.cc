@@ -20,7 +20,7 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
 /**
  * Parameter configure
  */
-SchedulingType algorithm = SchedulingStrategy::FIFO;
+SchedulingType algorithm = SchedulingStrategy::SDN_KVS;
 bool debug = false;                                   // Enable DEBUG log
 bool ifZipfian = true;                                // Whether there is a hotspot server
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
@@ -33,7 +33,7 @@ uint16_t server_port = 25565; // Server listen port
 uint32_t server_tqs = 64;     // Server TQS
 uint32_t client_num = 15;     // The number of client node
 uint32_t server_num = 15;     // The number of server node
-uint32_t key_num = 30000;     // The upper bound of the total number of keys(n keys = 1 keyset)
+uint32_t key_num = 50000;     // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 30;
 /**
  * Global variable

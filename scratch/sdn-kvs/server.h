@@ -63,13 +63,13 @@ class Server : public Application
             {
             // used by SBF algorithm
             case ServerSchedulingType::SBF:
-                return ctx1.sdnKvsHeader.GetBottleneckKsSiz() <
+                return ctx1.sdnKvsHeader.GetBottleneckKsSiz() >
                        ctx2.sdnKvsHeader.GetBottleneckKsSiz();
                 break;
             default:
             // used by SRPT algorithm
             case ServerSchedulingType::SRPT:
-                return ctx1.sdnKvsHeader.GetPriority() < ctx2.sdnKvsHeader.GetPriority();
+                return ctx1.sdnKvsHeader.GetPriority() > ctx2.sdnKvsHeader.GetPriority();
             }
         };
     };
