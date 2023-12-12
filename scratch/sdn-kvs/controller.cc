@@ -443,8 +443,8 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         }
 
         // Set timer to undo modification.
-        Time dt =
-            Seconds(1.0 * sdnKvsHeader.GetQueueSiz() / (1000.0 * sdnKvsHeader.GetServerRate()));
+        Time dt = Seconds(1.0 * (std::max(0U, sdnKvsHeader.GetQueueSiz() - 5)) /
+                          (1000.0 * sdnKvsHeader.GetServerRate()));
         NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
                                     << " later will undo the modification of the flow table");
         ctx.undoFlowEvents[swDpId] =

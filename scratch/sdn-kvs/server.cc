@@ -193,16 +193,18 @@ Server::HandleRead(Ptr<Socket> socket)
         if (InetSocketAddress::IsMatchingType(from))
         {
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size << ") received SDN-KVS packet"
-                                    << ss.str() << " from "
+                                    << "(queue_siz=" << m_queue_size
+                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                    << ") received SDN-KVS packet" << ss.str() << " from "
                                     << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                     << InetSocketAddress::ConvertFrom(from).GetPort());
         }
         else if (Inet6SocketAddress::IsMatchingType(from))
         {
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size << ") received SDN-KVS packet"
-                                    << ss.str() << " from "
+                                    << "(queue_siz=" << m_queue_size
+                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                    << ") received SDN-KVS packet" << ss.str() << " from "
                                     << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                     << Inet6SocketAddress::ConvertFrom(from).GetPort());
         }
@@ -245,8 +247,9 @@ Server::HandleRead(Ptr<Socket> socket)
             // Schedule send packet event
             Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size << ") will finish handled in "
-                                    << dt.As(Time::S));
+                                    << "(queue_siz=" << m_queue_size
+                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                    << ") will finish handled in " << dt.As(Time::S));
             Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from);
         }
         // MODIFY END
@@ -290,7 +293,8 @@ Server::ScheduleEvent()
         // Schedule send packet event
         Time dt = Seconds(1.0 * ks_siz / (1000.0 * m_server_rate));
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") begin to handle packet"
+                                << "(queue_siz=" << m_queue_size << ", update_time="
+                                << MilliSeconds(m_lst).As(Time::S) << ") begin to handle packet"
                                 << ss.str() << ", it will finish handled in " << dt.As(Time::S));
         m_cur_event =
             Simulator::Schedule(dt, &Server::SendPacket, this, ctx.socket, ctx.packet, ctx.from);
@@ -329,16 +333,18 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
     if (InetSocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet"
-                                << ss.str() << " to "
+                                << "(queue_siz=" << m_queue_size
+                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                << ") sent SDN-KVS packet" << ss.str() << " to "
                                 << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                 << InetSocketAddress::ConvertFrom(from).GetPort());
     }
     else if (Inet6SocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ") sent SDN-KVS packet"
-                                << ss.str() << " to "
+                                << "(queue_siz=" << m_queue_size
+                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                << ") sent SDN-KVS packet" << ss.str() << " to "
                                 << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                 << Inet6SocketAddress::ConvertFrom(from).GetPort());
     }
