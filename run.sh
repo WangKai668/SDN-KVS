@@ -27,7 +27,7 @@ server_num=15
 # The upper bound of the total number of keys(n keys = 1 keyset)
 key_num=50000
 
-while getopts "a:c:s:k:x:y:z:u:t:dm" arg
+while getopts "a:c:s:k:x:y:z:u:t:dmq:" arg
 do
     case $arg in
         a)
@@ -62,6 +62,9 @@ do
             ;;
         m)
             mute=true
+            ;;
+        q)
+            server_tqs=$OPTARG
             ;;
         ?)
             exit 1
