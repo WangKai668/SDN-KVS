@@ -266,15 +266,7 @@ Server::HandlePacket(Ptr<Packet> packet)
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
     m_queue_size += sdnKvsHeader.GetKsSiz();
     m_lst = cur;
-    sdnKvsHeader.SetHeavy(0);
-    if (m_queue_size > m_tqs)
-    {
-        // Server overloaded, send signal packet to SDN controller
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << " is overloaded, set heavy field to 1"
-                                << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs << ")");
-        sdnKvsHeader.SetHeavy(1U);
-    }
+    sdnKvsHeader.SetHeavy(0); // Set heavy flag when sending packet
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
 
@@ -316,6 +308,8 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
         int64_t cur = Simulator::Now().GetMilliSeconds();
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
         m_lst = m_queue_size ? cur : 0;
+        // Check and set heavy flag.
+        // Default value is 0, so just check the condition of being greater than TQS.
         if (m_queue_size > m_tqs)
         {
             // Server overloaded, send signal packet to SDN controller
