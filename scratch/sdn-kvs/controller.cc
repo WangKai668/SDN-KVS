@@ -337,17 +337,27 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     std::vector<uint32_t> sortedReuests = BP_LPT(scheduleRequests);
 
     std::map<uint32_t, std::vector<SchedulePacket*>> pktSnapshot;
+    std::map<uint32_t, uint32_t> ksStat; // Map<server id, the number of keys>
     // Prebuild packet snapshot data structure
     for (auto& [server_id, ctx] : m_scheduleContexts)
     {
+        uint32_t ks_sum = 0; // Log the number of keys for each servers
         for (auto& pkt : ctx.schedulePackets)
         {
             uint32_t req_id = pkt.sdnKvsHeader.GetReqId();
             if (!pktSnapshot.count(req_id))
                 pktSnapshot[req_id] = std::vector<SchedulePacket*>();
             pktSnapshot[req_id].push_back(&pkt);
+            ks_sum += pkt.sdnKvsHeader.GetKsSiz();
         }
+        ksStat[server_id] = ks_sum;
     }
+    ss.str("");
+    ss << "[";
+    for (const auto& [server_id, ks_sum] : ksStat)
+        ss << "(server_id=" << server_id << ", ks_sum=" << ks_sum << ")";
+    ss << "]";
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
 
     for (const auto& req_id : sortedReuests)
     {
