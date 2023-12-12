@@ -359,6 +359,10 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     ss << "]";
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
 
+    std::map<uint32_t, uint32_t> dt_base; // Delta send time base count. Map<server id, base count>
+    // dt = queue_size / server_rate + base_value * base_count. Here base_value=0.005ms
+    for (uint32_t i = 0; i < m_serverNodes.size(); i++)
+        dt_base[i] = 0;
     for (const auto& req_id : sortedReuests)
     {
         for (const auto& pkt : pktSnapshot[req_id])
@@ -368,7 +372,9 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             pkt->sdnKvsHeader.Print(ss);
 
             ScheduleContext& ctx = m_scheduleContexts[pkt->dstServerId];
-            Time dt = Seconds((1.0 * ctx.queue_size) / (1000.0 * ctx.server_rate));
+            Time dt = Seconds((1.0 * ctx.queue_size) / (1000.0 * ctx.server_rate) +
+                              0.000005 * dt_base[pkt->dstServerId]);
+            dt_base[pkt->dstServerId] += 1;
             // Remove send event set before
             if (pkt->eventId.IsRunning())
             {
