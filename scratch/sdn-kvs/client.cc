@@ -15,6 +15,8 @@
 #include "ns3/socket.h"
 #include "ns3/trace-source-accessor.h"
 
+#include <queue>
+
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("ClientApplication");
@@ -274,30 +276,66 @@ Client::IsAllSent(Request request)
 void
 Client::SortRequests()
 {
+    std::stringstream ss;
     std::set<Request> req_set;
     std::map<uint32_t, double> req_weight;
     std::vector<Request> ans;
+
+    ss << "[";
     for (auto& req : m_request_vec)
     {
         if (IsAllSent(req))
             continue;
         req_set.insert(req);
         req_weight[req.req_id] = 1;
+        ss << "(req_id=" << req.req_id << ", weight=" << req_weight[req.req_id] << ")";
     }
+    ss << "]";
+    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Do DAS sort for array(size="
+                            << m_request_vec.size() << "): " << ss.str());
+
+    ss.str("");
+    ss << "[";
+    for (const auto& req : req_set)
+        ss << req;
+    ss << "]";
+    NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S)
+                             << "] [DAS Debug] Initial request set: " << ss.str());
+
+    uint32_t turn_cnt = 0; // For debug
     while (!req_set.empty())
     {
         // Find server with the largest load
         uint32_t server_id = FindBottleneckServer(req_set);
+        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                                 << ++turn_cnt << "] Bottleneck server ID is " << server_id);
+        ss.str("");
+        ss << "[";
+
         // Select weighted largest request to be served at last at server b
-        double mn = INFINITY;
-        Request target_req;
+        std::priority_queue<std::pair<double, Request>,
+                            std::vector<std::pair<double, Request>>,
+                            std::greater<std::pair<double, Request>>>
+            q; // <value, req>
         for (const auto& req : req_set)
         {
-            double val = req_weight[req.req_id] / SumKeyset(req.req_id, server_id);
-            if (val <= mn)
-                mn = val, target_req = req;
+            uint32_t kv = SumKeyset(req.req_id, server_id);
+            if (kv == 0)
+                continue;
+            double val = req_weight[req.req_id] / kv;
+            ss << "(req_id=" << req.req_id << ", weight=" << req_weight[req.req_id]
+               << ", sum_ks=" << kv << ", value=" << val << ")";
+            q.push(std::pair<double, Request>(val, req));
         }
-        //  Scale the weights
+        Request target_req = q.top().second;
+
+        ss << "]";
+        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                                 << turn_cnt << "] Request set: " << ss.str());
+        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                                 << turn_cnt << "] Target request = " << target_req);
+
+        // Scale the weights
         double target_weight = req_weight[target_req.req_id];
         for (auto& [req_id, weight] : req_weight)
         {
@@ -306,11 +344,20 @@ Client::SortRequests()
             weight -= (target_weight * SumKeyset(req_id, server_id) /
                        SumKeyset(target_req.req_id, server_id));
         }
-        //  Update the set of unscheduled requests for Iteration
+        // Update the set of unscheduled requests for Iteration
         ans.push_back(target_req);
         req_set.erase(target_req);
         req_weight.erase(target_req.req_id);
     }
+
+    ss.str("");
+    ss << "[";
+    for (const auto& req : ans)
+        ss << "(req_id=" << req.req_id << ")";
+    ss << "]";
+    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S)
+                            << "] DAS schedule completed(size=" << ans.size() << "): " << ss.str());
+
     m_request_vec.assign(ans.begin(), ans.end());
 }
 
@@ -466,4 +513,23 @@ Client::HandleRead(Ptr<Socket> socket)
     socket->Close();
     socket->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
     socket = nullptr; // Make pointer counter be zero
+}
+
+std::ostream&
+operator<<(std::ostream& os, Client::Keyset ks)
+{
+    os << "(id=" << ks.id << ", ks_siz=" << ks.ks_siz << ", dst_server=" << ks.dst_server << ")";
+    return os;
+}
+
+std::ostream&
+operator<<(std::ostream& os, Client::Request req)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (const auto& ks : req.keysets)
+        ss << ks;
+    ss << "]";
+    os << "(st=" << req.st << ", req_id=" << req.req_id << ", keysets=" << ss.str() << ")";
+    return os;
 }

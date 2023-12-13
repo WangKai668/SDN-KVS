@@ -81,6 +81,10 @@ class Client : public Application
         }
     };
 
+    inline friend std::ostream& operator<<(std::ostream& os, Keyset ks);
+
+    inline friend std::ostream& operator<<(std::ostream& os, Request req);
+
     void StartApplication() override;
     void StopApplication() override;
 
