@@ -52,7 +52,7 @@ Controller::GetTypeId()
 void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
+    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
     // Initialize the schedule context
     uint32_t server_num = m_serverNodes.size();
     for (uint32_t i = 0; i < server_num; i++)
@@ -206,8 +206,8 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 
     m_switchPortCnt[swDpId - 1] = port_cnt; // Store switch total port count
 
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch " << swDpId
-                                << " completed");
+    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch " << swDpId
+                                 << " completed");
 }
 
 std::vector<uint32_t>
@@ -382,7 +382,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     for (const auto& [server_id, ks_sum] : ksStat)
         ss << "(server_id=" << server_id << ", ks_sum=" << ks_sum << ")";
     ss << "]";
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
+    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
 
     std::map<uint32_t, uint32_t> dt_base; // Delta send time base count. Map<server id, base count>
     // dt = queue_size / server_rate + base_value * base_count. Here base_value=0.005ms
@@ -403,9 +403,9 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             // Remove send event set before
             if (pkt->eventId.IsRunning())
             {
-                NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                            << "] Cancel the send event for Packet(pkt_id="
-                                            << pkt->id << ")" << ss.str());
+                NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
+                                             << "] Cancel the send event for Packet(pkt_id="
+                                             << pkt->id << ")" << ss.str());
                 pkt->eventId.Cancel();
             }
             // Set send event
@@ -461,9 +461,10 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         ScheduleContext& ctx = m_scheduleContexts[server_id];
         if (ctx.undoFlowEvents[swDpId].IsRunning())
         {
-            NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                        << "] Cancel undo flow table modification event for switch "
-                                        << swDpId << " (server_id=" << server_id << ")");
+            NS_LOG_DEBUG("[Controller]["
+                         << Simulator::Now().As(Time::S)
+                         << "] Cancel undo flow table modification event for switch " << swDpId
+                         << " (server_id=" << server_id << ")");
             ctx.undoFlowEvents[swDpId].Cancel();
         }
 

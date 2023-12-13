@@ -450,22 +450,20 @@ main(int argc, char* argv[])
     if (debug)
     {
         // DEBUG LOG
-        OFSwitch13Helper::EnableDatapathLogs();
-        LogComponentEnable("OFSwitch13Device", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13Port", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13Queue", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13SocketHandler", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13Controller", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13LearningController", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13Helper", LOG_LEVEL_ALL);
-        LogComponentEnable("OFSwitch13InternalHelper", LOG_LEVEL_ALL);
-    }
-    if (!mute)
-    {
         LogComponentEnable("Controller", LOG_LEVEL_ALL);
         LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
+        LogComponentEnable("ClientApplication", LOG_LEVEL_ALL);
     }
-    LogComponentEnable("ClientApplication", LOG_LEVEL_ALL);
+    else if (mute)
+    {
+        LogComponentEnable("ClientApplication", LOG_LEVEL_INFO);
+    }
+    else
+    {
+        LogComponentEnable("Controller", LOG_LEVEL_INFO);
+        LogComponentEnable("ServerApplication", LOG_LEVEL_INFO);
+        LogComponentEnable("ClientApplication", LOG_LEVEL_INFO);
+    }
 
     // Enable checksum computations (required by OFSwitch13 module)
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
