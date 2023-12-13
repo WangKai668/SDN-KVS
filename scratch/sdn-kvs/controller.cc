@@ -229,39 +229,64 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         req_set.insert(req.req_id);
         req_weight[req.req_id] = req.weight;
     }
+
+    ss.str("");
+    ss << "[";
+    for (const auto& [server_id, ctx] : m_scheduleContexts)
+        ss << "(server_id=" << server_id << ", " << ctx << ")";
+    ss << "]";
+    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
+                                 << "] [Schedule Debug] Server context: " << ss.str());
+
+    uint32_t turn_cnt = 0; // For debug
     while (!req_set.empty())
     {
+        std::priority_queue<std::pair<double, uint32_t>,
+                            std::vector<std::pair<double, uint32_t>>,
+                            std::greater<std::pair<double, uint32_t>>>
+            q; // <value, req_id>
+
         uint32_t sid = FindBottleneckServer(req_set);
-        double mx = INFINITY;
-        uint32_t target = 0;
+        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
+                                     << ++turn_cnt << "] Bottleneck server ID is " << sid);
+        ss.str("");
+        ss << "[";
+
         for (const auto& req_id : req_set)
         {
             uint32_t kv = SumKeyset(req_id, sid);
             if (kv == 0)
                 continue;
-            double weight = req_weight[req_id] / kv;
-            if (weight > mx)
-                continue;
-            mx = weight;
-            target = req_id;
+            double val = req_weight[req_id] / kv;
+            ss << "(req_id=" << req_id << ", weight=" << req_weight[req_id] << ", sum_ks=" << kv
+               << ", value=" << val << ")";
+            q.push(std::pair<double, uint32_t>(val, req_id));
         }
+        uint32_t target = q.top().second;
+
+        ss << "]";
+        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
+                                     << turn_cnt << "] Request set: " << ss.str());
+        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
+                                     << turn_cnt << "] Target request ID is " << target);
+
         for (auto& [req_id, weight] : req_weight)
         {
-            if (!req_set.count(req_id) || req_id == target)
+            if (req_id == target)
                 continue;
             uint32_t v1 = SumKeyset(req_id, sid);
             uint32_t v2 = SumKeyset(target, sid);
             weight -= (req_weight[target] * v1 / v2);
         }
-        req_weight[target] = mx;
         ret.push_back(target);
         req_set.erase(target);
+        req_weight.erase(target);
     }
 
     ss.str("");
     ss << "[";
     for (const auto& req_id : ret)
-        ss << "(req_id=" << req_id << ", weight=" << req_weight[req_id] << ")";
+        ss << "(req_id=" << req_id << ")";
     ss << "]";
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
                                 << "] Schedule completed(size=" << ret.size() << "): " << ss.str());
@@ -668,4 +693,26 @@ Controller::FindBottleneckServer(std::set<uint32_t>& req_set)
         mx = weight, ret = i;
     }
     return ret;
+}
+
+std::ostream&
+operator<<(std::ostream& os, Controller::ScheduleContext ctx)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (const auto& pkt : ctx.schedulePackets)
+        ss << pkt;
+    ss << "]";
+    os << "queue_size=" << ctx.queue_size << ", server_rate=" << ctx.server_rate
+       << ", is_heavy=" << ctx.is_heavy
+       << ", lst_schedule_time=" << ctx.lastScheduleTime.As(Time::S) << ", packets=" << ss.str();
+    return os;
+}
+
+std::ostream&
+operator<<(std::ostream& os, Controller::SchedulePacket pkt)
+{
+    os << "(id=" << pkt.sdnKvsHeader.GetId() << ", req_id=" << pkt.sdnKvsHeader.GetReqId()
+       << ", ks_siz=" << pkt.sdnKvsHeader.GetKsSiz() << ")";
+    return os;
 }

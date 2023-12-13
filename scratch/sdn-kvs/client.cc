@@ -100,6 +100,7 @@ Client::ScheduleTransmit()
     Time dt = Seconds(entry.st - lst);
 
     SdnKvsHeader sdnKvsHeader;
+    sdnKvsHeader.SetId(entry.id);
     sdnKvsHeader.SetReqId(entry.req_id);
     sdnKvsHeader.SetKsSiz(entry.ks_siz);
     sdnKvsHeader.SetQueueSiz(0);
@@ -112,7 +113,13 @@ Client::ScheduleTransmit()
     Ptr<Packet> packet = Create<Packet>();
     packet->AddHeader(sdnKvsHeader);
 
-    Simulator::Schedule(dt, &Client::Send, this, packet, entry.dst_ip, entry.dst_port);
+    Simulator::Schedule(dt,
+                        &Client::Send,
+                        this,
+                        packet,
+                        entry.dst_server,
+                        entry.dst_ip,
+                        entry.dst_port);
 }
 
 void
@@ -122,7 +129,13 @@ Client::SetRequestList(std::vector<RequestTableEntry>& request_list)
 }
 
 void
-Client::Send(Ptr<Packet> packet, std::string dst_ip, uint16_t dst_port)
+Client::SetClientId(uint32_t client_id)
+{
+    m_client_id = client_id;
+}
+
+void
+Client::Send(Ptr<Packet> packet, uint32_t dst_server_id, std::string dst_ip, uint16_t dst_port)
 {
     Address peerAddress(Ipv4Address(dst_ip.c_str()));
     Ptr<Socket> socket = Connect(peerAddress, dst_port);
@@ -142,9 +155,10 @@ Client::Send(Ptr<Packet> packet, std::string dst_ip, uint16_t dst_port)
     packet->PeekHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
-    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Sent SDN-KVS packet" << ss.str()
-                            << " to " << Ipv4Address::ConvertFrom(peerAddress) << " port "
-                            << dst_port);
+    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Client " << m_client_id
+                            << " Sent SDN-KVS packet" << ss.str() << " to server " << dst_server_id
+                            << "(ip=" << Ipv4Address::ConvertFrom(peerAddress)
+                            << ", port=" << dst_port << ")");
     if (!m_das_enabled)
         ScheduleTransmit();
 }
@@ -206,6 +220,7 @@ Client::ScheduleRequestEvent()
             requests[entry.req_id] = request;
         }
         Keyset ks;
+        ks.id = entry.id;
         ks.dst_server = entry.dst_server;
         ks.dst_ip = entry.dst_ip;
         ks.dst_port = entry.dst_port;
@@ -359,6 +374,7 @@ Client::SendOne(uint32_t server_id)
                 continue;
             // Build header
             SdnKvsHeader sdnKvsHeader;
+            sdnKvsHeader.SetId(ks.id);
             sdnKvsHeader.SetReqId(req.req_id);
             sdnKvsHeader.SetKsSiz(ks.ks_siz);
             sdnKvsHeader.SetQueueSiz(0);
@@ -370,7 +386,7 @@ Client::SendOne(uint32_t server_id)
             Ptr<Packet> packet = Create<Packet>();
             packet->AddHeader(sdnKvsHeader);
             // Send packet
-            Send(packet, ks.dst_ip, ks.dst_port);
+            Send(packet, ks.dst_server, ks.dst_ip, ks.dst_port);
             m_ksSendTime[std::pair<uint32_t, uint32_t>(req.req_id, ks.dst_server)] =
                 Simulator::Now();
             ks.is_sent = true;

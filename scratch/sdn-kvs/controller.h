@@ -90,6 +90,10 @@ class Controller : public OFSwitch13Controller
         std::map<uint64_t, EventId> undoFlowEvents;
     };
 
+    inline friend std::ostream& operator<<(std::ostream& os, ScheduleContext ctx);
+
+    inline friend std::ostream& operator<<(std::ostream& os, SchedulePacket pkt);
+
     /**
      * Configure the switch.
      * \param swtch The switch information.

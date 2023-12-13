@@ -29,10 +29,12 @@ ApplicationContainer
 ClientHelper::Install(NodeContainer c)
 {
     ApplicationContainer apps;
+    uint32_t cnt = 0;
     for (auto& [client_id, request_list] : m_req_table)
     {
         m_client = m_factory.Create<Client>();
         m_client->SetRequestList(request_list);
+        m_client->SetClientId(cnt++);
         Ptr<Node> node = c.Get(client_id);
         node->AddApplication(m_client);
         apps.Add(m_client);

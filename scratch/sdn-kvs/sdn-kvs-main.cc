@@ -243,6 +243,7 @@ init_request_table(NodeContainer& serverNodes)
 
             // Build request table entry
             RequestTableEntry entry;
+            entry.id = 0;   // Initialize it later
             entry.st = 0.0; // Initialize it later
             entry.src_client = client_id;
             entry.dst_server = server_id;
@@ -310,6 +311,12 @@ init_request_table(NodeContainer& serverNodes)
     for (auto& [client_id, vec] : req_table)
         std::sort(vec.begin(), vec.end(), cmp);
 
+    // Initialize keyset ID
+    uint32_t id_cnt = 0;
+    for (auto& [client_id, vec] : req_table)
+        for (auto& entry : vec)
+            entry.id = ++id_cnt;
+
     // Print the request table
     NS_LOG_UNCOND("tot_key_num = " << tot_key_num << ", tot_request_num = " << tot_request_num
                                    << ", tot_ks_num = " << tot_ks_num);
@@ -318,10 +325,11 @@ init_request_table(NodeContainer& serverNodes)
         for (const auto& entry : entry_vec)
         {
             std::stringstream ss;
-            ss << "[" << client_id << "] (st=" << entry.st << ", src_client=" << entry.src_client
-               << ", dst_server=" << entry.dst_server << ", dst_ip=" << entry.dst_ip
-               << ", req_id=" << entry.req_id << ", ks_siz=" << entry.ks_siz
-               << ", bottleneck_ks_size=" << entry.bottleneck_ks_size << ")";
+            ss << "[" << client_id << "] (id=" << entry.id << ", st=" << entry.st
+               << ", src_client=" << entry.src_client << ", dst_server=" << entry.dst_server
+               << ", dst_ip=" << entry.dst_ip << ", req_id=" << entry.req_id
+               << ", ks_siz=" << entry.ks_siz << ", bottleneck_ks_size=" << entry.bottleneck_ks_size
+               << ")";
             NS_LOG_UNCOND(ss.str());
         }
     }

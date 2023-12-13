@@ -35,6 +35,8 @@ class Client : public Application
      */
     void SetRequestList(std::vector<RequestTableEntry>& request_list);
 
+    void SetClientId(uint32_t client_id);
+
   protected:
     void DoDispose() override;
 
@@ -54,6 +56,7 @@ class Client : public Application
      */
     struct Keyset
     {
+        uint32_t id;         // Keyset ID(for debug)
         uint32_t dst_server; // Destination server id(start from 0)
         std::string dst_ip;  // Destination server IPv4 address string
         uint16_t dst_port;   // Destination server port
@@ -83,10 +86,11 @@ class Client : public Application
 
     /**
      * \brief Send a packet
+     * \param dst_server_id Destination server ID
      * \param dst_ip Destination server IPv4 address string
      * \param dst_port Destination server listen port
      */
-    void Send(Ptr<Packet> packet, std::string dst_ip, uint16_t dst_port);
+    void Send(Ptr<Packet> packet, uint32_t dst_server_id, std::string dst_ip, uint16_t dst_port);
 
     /**
      * \brief Create a socket that connected to the server.
@@ -151,6 +155,7 @@ class Client : public Application
      */
     void ScheduleTransmit();
 
+    uint32_t m_client_id;                          //!< Client ID
     std::vector<RequestTableEntry> m_request_list; //!< Request list for this client
     bool m_sbf_enabled; //!< Whether SBF algorithm is enabled on the client
     bool m_das_enabled; //!< Whether DAS algorithm is enabled on the client

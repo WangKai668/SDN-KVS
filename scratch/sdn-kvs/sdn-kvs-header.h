@@ -20,6 +20,17 @@ class SdnKvsHeader : public Header
     ~SdnKvsHeader() override;
 
     /**
+     * Set keyset id.
+     * \param id Keyset id.
+     */
+    void SetId(uint32_t id);
+    /**
+     * Get keyset id.
+     * \return Keyset id.
+     */
+    uint32_t GetId() const;
+
+    /**
      * Set request id.
      * \param req_id Request id.
      */
@@ -108,7 +119,8 @@ class SdnKvsHeader : public Header
     uint32_t GetSerializedSize() const override;
 
   private:
-    uint32_t m_req_id;            //!< Request id
+    uint32_t m_id;                //!< Keyset ID(for debug)
+    uint32_t m_req_id;            //!< Request ID
     uint32_t m_ks_siz;            //!< Keyset size
     uint32_t m_bottleneck_ks_siz; //!< Bottleneck keyset size
     uint32_t m_queue_siz;         //!< Server queue size

@@ -329,13 +329,18 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
 
+    NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                            << "(queue_siz=" << m_queue_size
+                            << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                            << ") finishes handling the packet" << ss.str());
+
     socket->SendTo(packet, 0, from);
     if (InetSocketAddress::IsMatchingType(from))
     {
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
                                 << "(queue_siz=" << m_queue_size
                                 << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                << ") sent SDN-KVS packet" << ss.str() << " to "
+                                << ") sent response packet" << ss.str() << " to "
                                 << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
                                 << InetSocketAddress::ConvertFrom(from).GetPort());
     }
@@ -344,7 +349,7 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
         NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
                                 << "(queue_siz=" << m_queue_size
                                 << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                << ") sent SDN-KVS packet" << ss.str() << " to "
+                                << ") sent response packet" << ss.str() << " to "
                                 << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
                                 << Inet6SocketAddress::ConvertFrom(from).GetPort());
     }
