@@ -35,7 +35,7 @@ uint32_t server_tqs = 64;     // Server TQS
 uint32_t client_num = 15;     // The number of client node
 uint32_t server_num = 15;     // The number of server node
 uint32_t key_num = 50000;     // The upper bound of the total number of keys(n keys = 1 keyset)
-static const int request_size = 30;
+static const int request_size = 40;
 /**
  * Global variable
  */
@@ -143,7 +143,7 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add)
             zipf->SetAttribute("N", IntegerValue(10));
             zipf->SetAttribute("Alpha", DoubleValue(2.0));
             int value = zipf->GetInteger();
-            int value1 = server_num / 5;
+            int value1 = server_num * 0.2 < 1 ? 1 : server_num * 0.2;
             // 生成 value1 * (value - 1) 到 value1 * value 之间的随机数
             int value2 = (rand() % (value1 + 1)) + value1 * (value - 1);
             x = value2 % server_num + client_num + 1;
@@ -266,7 +266,7 @@ init_request_table(NodeContainer& serverNodes)
 
     // Initialize send time
     // double req_mean = 1.0 * tot_key_num / tot_ks_num;
-    double req_mean = request_size;
+    double req_mean = 1.0 * tot_key_num / tot_request_num;
     double send_time = 2;
     double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
