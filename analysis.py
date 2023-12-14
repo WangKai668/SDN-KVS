@@ -16,6 +16,8 @@ pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z]+), cl
 
 algorithm: str
 
+req_st_send_time: dict[int, float] = {}
+ks_st_send_time: dict[int, float] = {}
 client_send_time: dict[int, float] = {}
 client_recv_time: dict[int, float] = {}
 ctrl_recv_time: dict[int, float] = {}
@@ -85,13 +87,19 @@ def analyze():
     global ks_ctrl_wait_time_p95
     global ks_ctrl_wait_cnt
     for req_id in range(1, tot_request_num + 1):
-        req_response_time[req_id] = req_recv_time[req_id] - req_send_time[req_id]
+        if algorithm == "DAS":
+            req_response_time[req_id] = req_recv_time[req_id] - req_st_send_time[req_id]
+        else:
+            req_response_time[req_id] = req_recv_time[req_id] - req_send_time[req_id]
     req_response_time_sorted = sorted(list(req_response_time.values()))
     req_avg_response_time = sum(req_response_time_sorted) / tot_request_num
     req_p99 = np.percentile(req_response_time_sorted, 99)
     req_p95 = np.percentile(req_response_time_sorted, 95)
     for id in range(1, tot_ks_num + 1):
-        ks_response_time[id] = client_recv_time[id] - client_send_time[id]
+        if algorithm == "DAS":
+            ks_response_time[id] = client_recv_time[id] - ks_st_send_time[id]
+        else:
+            ks_response_time[id] = client_recv_time[id] - client_send_time[id]
         ks_ctrl_wait_time[id] = ctrl_send_time[id] - ctrl_recv_time[id]
     ks_response_time_sorted = sorted(list(ks_response_time.values()))
     ks_avg_response_time = sum(ks_response_time_sorted) / tot_ks_num
@@ -118,7 +126,10 @@ def parse_line(line: str):
     match = pattern1.search(line)
     if match:
         id = int(match.group(1))
+        st = float(match.group(2)) * 1000
         req_id = int(match.group(6))
+        req_st_send_time[req_id] = st
+        ks_st_send_time[id] = st
         ctrl_recv_time[id] = 0
         ctrl_send_time[id] = 0
         req_recv_time[req_id] = 0

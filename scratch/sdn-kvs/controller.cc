@@ -282,6 +282,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         req_set.erase(target);
         req_weight.erase(target);
     }
+    std::reverse(ret.begin(), ret.end());
 
     ss.str("");
     ss << "[";

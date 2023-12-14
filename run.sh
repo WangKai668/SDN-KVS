@@ -9,9 +9,9 @@ ifZipfian=true
 # The distribution type for generating key(0: POSSION, 1: PARETO)
 distribution_type=0
 # The keyset size type(0: HEAVY, 1: LIGHT)
-keyset_size_type=0
+keyset_size_type=1
 # The send time type(0: HEAVY, 1: LIGHT)
-sendtime_type=0
+sendtime_type=1
 # Utilization
 uti=0.7
 # Simulator running time(unit: second)
@@ -74,5 +74,5 @@ done
 
 ./ns3 run "scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --mute=${mute} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --sendtime_type=${sendtime_type} --uti=${uti} --simTime=${simTime} --server_rate=${server_rate} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num}" > output.log 2>&1
 if [ $? -eq 0 ];then
-    python ./analysis.py output.log
+    python3 ./analysis.py output.log
 fi

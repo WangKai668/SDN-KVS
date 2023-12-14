@@ -280,6 +280,7 @@ Client::SortRequests()
     std::set<Request> req_set;
     std::map<uint32_t, double> req_weight;
     std::vector<Request> ans;
+    double constant = 0.2;
 
     ss << "[";
     for (auto& req : m_request_vec)
@@ -287,12 +288,13 @@ Client::SortRequests()
         if (IsAllSent(req))
             continue;
         req_set.insert(req);
-        req_weight[req.req_id] = 1;
+        int64_t wait_time = Simulator::Now().GetMilliSeconds() - Seconds(req.st).GetMilliSeconds();
+        req_weight[req.req_id] = 1 + constant * wait_time;
         ss << "(req_id=" << req.req_id << ", weight=" << req_weight[req.req_id] << ")";
     }
     ss << "]";
     NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Do DAS sort for array(size="
-                            << m_request_vec.size() << "): " << ss.str());
+                            << req_set.size() << "): " << ss.str());
 
     ss.str("");
     ss << "[";
@@ -349,6 +351,7 @@ Client::SortRequests()
         req_set.erase(target_req);
         req_weight.erase(target_req.req_id);
     }
+    std::reverse(ans.begin(), ans.end());
 
     ss.str("");
     ss << "[";
