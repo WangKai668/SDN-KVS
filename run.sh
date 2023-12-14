@@ -74,5 +74,5 @@ done
 
 ./ns3 run "scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --mute=${mute} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --sendtime_type=${sendtime_type} --uti=${uti} --simTime=${simTime} --server_rate=${server_rate} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num}" > output.log 2>&1
 if [ $? -eq 0 ];then
-    bash ./analysis_data.sh
+    python ./analysis.py output.log
 fi
