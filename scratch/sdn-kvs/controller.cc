@@ -411,10 +411,10 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             }
             // Set send event
             pkt->eventId = Simulator::Schedule(dt, &Controller::RemovePacketAndForward, this, *pkt);
-            NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                        << "] Packet(pkt_id=" << pkt->id << ")" << ss.str()
-                                        << " will be forwarded to the server " << pkt->dstServerId
-                                        << " in " << dt.As(Time::S));
+            NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
+                                         << "] Packet(pkt_id=" << pkt->id << ")" << ss.str()
+                                         << " will be forwarded to the server " << pkt->dstServerId
+                                         << " in " << dt.As(Time::S));
         }
     }
     // Do not free the message.
