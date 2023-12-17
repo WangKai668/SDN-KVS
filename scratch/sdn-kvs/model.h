@@ -20,6 +20,12 @@ struct RequestTableEntry
     uint32_t bottleneck_ks_size;
 };
 
+struct ServerRateRatio
+{
+    uint32_t r1, r2, r3; // The ratio of the server that server_rate = 1, 2, 3
+    // r1 = 5, r2 = 3, r3 = 2 means 5:3:2
+};
+
 enum DistributionType
 {
     POSSION, // Possion distribution
@@ -147,6 +153,13 @@ operator<<(std::ostream& os, SchedulingType type)
     os << type.name << "(server_algorithm: " << type.server_algorithm
        << ", client_algorithm: " << type.client_algorithm
        << ", controller_algorithm: " << type.controller_algorithm << ")";
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, ServerRateRatio ratio)
+{
+    os << ratio.r1 << ":" << ratio.r2 << ":" << ratio.r3;
     return os;
 }
 

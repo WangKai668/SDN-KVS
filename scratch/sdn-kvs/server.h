@@ -31,10 +31,6 @@ class Server : public Application
     Server();
     ~Server() override;
 
-    uint32_t GetServerId();
-
-    void SetServerId(uint32_t server_id);
-
   protected:
     void DoDispose() override;
 

@@ -15,13 +15,13 @@ ServerHelper::ServerHelper(uint16_t port)
 }
 
 ServerHelper::ServerHelper(uint16_t port,
-                           uint32_t server_rate,
+                           ServerRateRatio ratio,
                            uint32_t tqs,
                            SchedulingType algorithm)
 {
     m_factory.SetTypeId(Server::GetTypeId());
+    m_server_rate_ratio = ratio;
     SetAttribute("Port", UintegerValue(port));
-    SetAttribute("ServerRate", UintegerValue(server_rate));
     SetAttribute("TQS", UintegerValue(tqs));
     SetAttribute("SrptEnabled",
                  BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SRPT));
@@ -43,12 +43,22 @@ ServerHelper::Install(NodeContainer c)
     for (NodeContainer::Iterator i = c.Begin(); i != c.End(); ++i)
     {
         Ptr<Node> node = *i;
-
         m_server = m_factory.Create<Server>();
-        m_server->SetServerId(cnt++);
+        m_server->SetAttribute("ServerId", UintegerValue(cnt++));
         node->AddApplication(m_server);
         apps.Add(m_server);
     }
+    uint32_t ratio_tot = m_server_rate_ratio.r1 + m_server_rate_ratio.r2 + m_server_rate_ratio.r3;
+    uint32_t cnt1 = cnt * m_server_rate_ratio.r1 / ratio_tot;
+    uint32_t cnt2 = cnt * m_server_rate_ratio.r2 / ratio_tot;
+    uint32_t cnt3 = cnt * m_server_rate_ratio.r3 / ratio_tot;
+    uint32_t ptr = 0;
+    while (ptr < cnt1)
+        apps.Get(ptr++)->SetAttribute("ServerRate", UintegerValue(1U));
+    while (ptr < cnt1 + cnt2)
+        apps.Get(ptr++)->SetAttribute("ServerRate", UintegerValue(2U));
+    while (ptr < cnt1 + cnt2 + cnt3)
+        apps.Get(ptr++)->SetAttribute("ServerRate", UintegerValue(3U));
     return apps;
 }
 

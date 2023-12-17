@@ -29,12 +29,13 @@ KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
 KeysetSizeType sendtime_type = HEAVY;                 // The send time type
 double uti = 0.7;                                     // Utilization
 uint32_t simTime = 1000;                              // Simulator running time(unit: second)
-uint32_t server_rate = 1;     // Server handle rate. (Number of keys processed per millisecond)
-uint16_t server_port = 25565; // Server listen port
-uint32_t server_tqs = 64;     // Server TQS
-uint32_t client_num = 15;     // The number of client node
-uint32_t server_num = 15;     // The number of server node
-uint32_t key_num = 50000;     // The upper bound of the total number of keys(n keys = 1 keyset)
+ServerRateRatio server_rate_ratio = {1, 0, 0}; // Server rate ratio. (Server rate: number of keys
+                                               // processed per millisecond)
+uint16_t server_port = 25565;                  // Server listen port
+uint32_t server_tqs = 64;                      // Server TQS
+uint32_t client_num = 15;                      // The number of client node
+uint32_t server_num = 15;                      // The number of server node
+uint32_t key_num = 50000; // The upper bound of the total number of keys(n keys = 1 keyset)
 static const int request_size = 40;
 /**
  * Global variable
@@ -268,6 +269,10 @@ init_request_table(NodeContainer& serverNodes)
     // double req_mean = 1.0 * tot_key_num / tot_ks_num;
     double req_mean = 1.0 * tot_key_num / tot_request_num;
     double send_time = 2;
+    uint32_t ratio_tot = server_rate_ratio.r1 + server_rate_ratio.r2 + server_rate_ratio.r3;
+    double server_rate =
+        1.0 * (server_rate_ratio.r1 + server_rate_ratio.r2 * 2 + server_rate_ratio.r3 * 3) /
+        ratio_tot;
     double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
@@ -335,14 +340,86 @@ init_request_table(NodeContainer& serverNodes)
     }
 }
 
+ServerRateRatio
+parse_ratio(std::string ratio_str)
+{
+    size_t pos = 0;
+    std::string token;
+    std::vector<uint32_t> ratio_vec;
+    try
+    {
+        while ((pos = ratio_str.find(":")) != std::string::npos)
+        {
+            token = ratio_str.substr(0, pos);
+            ratio_vec.push_back(std::stoul(token));
+            ratio_str.erase(0, pos + 1);
+        }
+        ratio_vec.push_back(std::stoul(ratio_str));
+        while (ratio_vec.size() < 3)
+            ratio_vec.push_back(0);
+    }
+    catch (const std::exception& e)
+    {
+        NS_LOG_UNCOND("Failed to parse server rate ratio, use default value(Default: 1:0:0)");
+        ratio_vec.clear();
+        ratio_vec.push_back(1);
+        ratio_vec.push_back(0);
+        ratio_vec.push_back(0);
+    }
+    // Build server rate ratio struct variable
+    // Assert that the size of ratio_vec is always >= 3
+    ServerRateRatio ans{ratio_vec[0], ratio_vec[1], ratio_vec[2]};
+    // Simplify the ratio
+    uint32_t gcd = std::gcd(std::gcd(ans.r1, ans.r2), ans.r3);
+    if (gcd != 0)
+    {
+        ans.r1 /= gcd, ans.r2 /= gcd, ans.r3 /= gcd;
+    }
+    else if (ans.r1 != 0 && ans.r2 == 0 && ans.r3 == 0)
+    {
+        ans.r1 = 1;
+    }
+    else if (ans.r1 == 0 && ans.r2 != 0 && ans.r3 == 0)
+    {
+        ans.r2 = 1;
+    }
+    else if (ans.r1 == 0 && ans.r2 == 0 && ans.r3 != 0)
+    {
+        ans.r3 = 1;
+    }
+    else
+    {
+        uint32_t gcd1 = std::gcd(ans.r1, ans.r2);
+        uint32_t gcd2 = std::gcd(ans.r1, ans.r3);
+        uint32_t gcd3 = std::gcd(ans.r2, ans.r3);
+        gcd = (gcd1 == 0) ? ((gcd2 == 0) ? gcd3 : gcd2) : gcd1;
+        ans.r1 /= gcd, ans.r2 /= gcd, ans.r3 /= gcd;
+    }
+    // Check if the server can just prorate the server rate.
+    // If not, fall back to the default ratio.
+    uint32_t ratio_tot = ans.r1 + ans.r2 + ans.r3;
+    bool flag1 = (ans.r1 == 0) ? true : ((server_num * ans.r1) % ratio_tot) == 0;
+    bool flag2 = (ans.r2 == 0) ? true : ((server_num * ans.r2) % ratio_tot) == 0;
+    bool flag3 = (ans.r3 == 0) ? true : ((server_num * ans.r3) % ratio_tot) == 0;
+    if (!(flag1 && flag2 && flag3))
+    {
+        NS_LOG_UNCOND(
+            "The server cannot allocate rates exactly proportionally. Fall back to default "
+            "proportions.(Default: 1:0:0)");
+        ans.r1 = 1, ans.r2 = 0, ans.r3 = 0;
+    }
+    return ans;
+}
+
 void
 init_parameter(int argc, char* argv[])
 {
     CommandLine cmd;
-    uint32_t algorithm_index = 0;         // Default: FIFO
-    uint32_t distribution_type_index = 0; // Default: POSSION
-    uint32_t keyset_size_type_index = 0;  // Default: HEAVY
-    uint32_t sendtime_type_index = 0;     // Default: HEAVY
+    uint32_t algorithm_index = 0;                // Default: FIFO
+    uint32_t distribution_type_index = 0;        // Default: POSSION
+    uint32_t keyset_size_type_index = 0;         // Default: HEAVY
+    uint32_t sendtime_type_index = 0;            // Default: HEAVY
+    std::string server_rate_ratio_str = "1:0:0"; // Default: 1:0:0
     cmd.AddValue("algorithm",
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
                  algorithm_index);
@@ -358,9 +435,9 @@ init_parameter(int argc, char* argv[])
     cmd.AddValue("sendtime_type", "The send time type(0: HEAVY, 1: LIGHT)", sendtime_type_index);
     cmd.AddValue("uti", "Utilization", uti);
     cmd.AddValue("simTime", "Simulator running time(unit: second)", simTime);
-    cmd.AddValue("server_rate",
-                 "Server handle rate. (Number of keys processed per millisecond)",
-                 server_rate);
+    cmd.AddValue("server_rate_ratio",
+                 "Server rate ratio. (Server rate: number of keys processed per millisecond)",
+                 server_rate_ratio_str);
     cmd.AddValue("server_tqs", "Server TQS", server_tqs);
     cmd.AddValue("client_num", "The number of client node", client_num);
     cmd.AddValue("server_num", "The number of server node", server_num);
@@ -418,6 +495,9 @@ init_parameter(int argc, char* argv[])
         sendtime_type = HEAVY;
     }
 
+    // Parse server rate ratio string
+    server_rate_ratio = parse_ratio(server_rate_ratio_str);
+
     // Print the parameter
     NS_LOG_UNCOND("===== Parameter configure =====");
     NS_LOG_UNCOND(" - algorithm = " << algorithm);
@@ -429,7 +509,7 @@ init_parameter(int argc, char* argv[])
     NS_LOG_UNCOND(" - sendtime_type = " << sendtime_type);
     NS_LOG_UNCOND(" - uti = " << uti);
     NS_LOG_UNCOND(" - simTime = " << simTime);
-    NS_LOG_UNCOND(" - server_rate = " << server_rate);
+    NS_LOG_UNCOND(" - server_rate_ratio = " << server_rate_ratio);
     NS_LOG_UNCOND(" - server_tqs = " << server_tqs);
     NS_LOG_UNCOND(" - client_num = " << client_num);
     NS_LOG_UNCOND(" - server_num = " << server_num);
@@ -541,8 +621,25 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(server_port, server_rate, server_tqs, algorithm);
-    serverHelper.Install(serverNodes);
+    ServerHelper serverHelper(server_port, server_rate_ratio, server_tqs, algorithm);
+    ApplicationContainer server_apps = serverHelper.Install(serverNodes);
+    // Print server information log
+    NS_LOG_UNCOND("==== Server information ====");
+    for (auto i = server_apps.Begin(); i != server_apps.End(); ++i)
+    {
+        Ptr<Application> app = *i;
+        UintegerValue id, server_rate, tqs;
+        BooleanValue srpt_enabled, sbf_enabled;
+        app->GetAttribute("ServerId", id);
+        app->GetAttribute("ServerRate", server_rate);
+        app->GetAttribute("TQS", tqs);
+        app->GetAttribute("SrptEnabled", srpt_enabled);
+        app->GetAttribute("SbfEnabled", sbf_enabled);
+        NS_LOG_UNCOND("[" << id.Get() << "] (server_id=" << id.Get()
+                          << ", server_rate=" << server_rate.Get() << ", tqs=" << tqs.Get()
+                          << ", srpt_enabled=" << srpt_enabled.Get()
+                          << ", sbf_enabled=" << sbf_enabled.Get() << ")");
+    }
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
     init_request_table(serverNodes);

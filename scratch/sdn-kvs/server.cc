@@ -36,6 +36,11 @@ Server::GetTypeId()
                           MakeUintegerAccessor(&Server::m_port),
                           MakeUintegerChecker<uint16_t>())
             // MODIFY BEGIN
+            .AddAttribute("ServerId",
+                          "Server ID.",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&Server::m_server_id),
+                          MakeUintegerChecker<uint32_t>())
             .AddAttribute("ServerRate",
                           "Server handle rate.",
                           UintegerValue(1),
@@ -158,21 +163,6 @@ Server::StopApplication()
         m_socket6->SetRecvCallback(MakeNullCallback<void, Ptr<Socket>>());
     }
 }
-
-// MODIFY BEGIN
-uint32_t
-Server::GetServerId()
-{
-    return m_server_id;
-}
-
-void
-Server::SetServerId(uint32_t server_id)
-{
-    m_server_id = server_id;
-}
-
-// MODIFY END
 
 void
 Server::HandleRead(Ptr<Socket> socket)
