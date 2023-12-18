@@ -427,17 +427,20 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
                          Ptr<const RemoteSwitch> swtch,
                          uint32_t xid)
 {
-    if (sdnKvsHeader.GetHeavy() == 1)
-    {
-        std::stringstream ss;
-        // Get the switch datapath ID
-        uint64_t swDpId = swtch->GetDpId();
-        // Get server IP address
-        Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
-        ss << serverIp;
-        std::string serverIp_str = ss.str();
-        uint32_t server_id = m_ipToServer[serverIp_str];
+    std::stringstream ss;
+    // Get the switch datapath ID
+    uint64_t swDpId = swtch->GetDpId();
+    // Get server IP address
+    Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_SRC, (struct ofl_match*)msg->match);
+    ss << serverIp;
+    std::string serverIp_str = ss.str();
+    uint32_t server_id = m_ipToServer[serverIp_str];
+    // Check if this server is connected to the switch
+    int32_t in_port = GetSwitchPortByServerId(swDpId, server_id);
 
+    // Modify the flow table when the server is heavy and is connected to this switch
+    if (sdnKvsHeader.GetHeavy() == 1 && in_port != -1)
+    {
         // Record the overload time, queue size and server service rate when overloaded
         ScheduleContext& context = m_scheduleContexts[server_id];
         context.queue_size = sdnKvsHeader.GetQueueSiz();
