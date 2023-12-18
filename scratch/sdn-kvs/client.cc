@@ -503,9 +503,9 @@ Client::HandleRead(Ptr<Socket> socket)
             auto key = std::pair<uint32_t, uint32_t>(sdnKvsHeader.GetReqId(), server_id);
             Time send_time = m_ksSendTime[key];
             Time recv_time = Simulator::Now();
-            int64_t dt = recv_time.GetMilliSeconds() - send_time.GetMilliSeconds();
+            int64_t dt = recv_time.GetMicroSeconds() - send_time.GetMicroSeconds();
             m_servers[server_id].capacity = alpha * m_servers[server_id].capacity +
-                                            (1 - alpha) * (sdnKvsHeader.GetKsSiz() / dt);
+                                            (1 - alpha) * (sdnKvsHeader.GetKsSiz() * 1000 / dt);
             // Avoid map being much large
             m_ksSendTime.erase(key);
             SendOne(server_id);
