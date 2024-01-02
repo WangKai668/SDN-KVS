@@ -1,15 +1,14 @@
 us=("0.4" "0.5" "0.6" "0.7" "0.8" "0.9" "1")
 
 echo "小规模场景"
-c=10
-s=10
+c=15
+s=15
 k=10000
 for ((i=1; i<=8; i++)); do
     case $i in
         1) 
             x=0
             y=1
-            z=1
             r=1:0:0
             q=64
             h=false
@@ -17,7 +16,6 @@ for ((i=1; i<=8; i++)); do
         2)
             x=0
             y=1
-            z=1
             r=1:0:0
             q=64
             h=true
@@ -25,7 +23,6 @@ for ((i=1; i<=8; i++)); do
         3)
             x=1
             y=0
-            z=1
             r=1:0:0
             q=64
             h=false
@@ -33,7 +30,6 @@ for ((i=1; i<=8; i++)); do
         4)
             x=1
             y=0
-            z=1
             r=1:0:0
             q=64
             h=true
@@ -41,7 +37,6 @@ for ((i=1; i<=8; i++)); do
         5)
             x=0
             y=1
-            z=1
             r=5:3:2
             q=64
             h=false
@@ -49,7 +44,6 @@ for ((i=1; i<=8; i++)); do
         6)
             x=0
             y=1
-            z=1
             r=5:3:2
             q=64
             h=true
@@ -57,7 +51,6 @@ for ((i=1; i<=8; i++)); do
         7)
             x=1
             y=0
-            z=1
             r=5:3:2
             q=64
             h=false
@@ -65,7 +58,6 @@ for ((i=1; i<=8; i++)); do
         8)
             x=1
             y=0
-            z=1
             r=5:3:2
             q=64
             h=true
@@ -81,9 +73,9 @@ for ((i=1; i<=8; i++)); do
         esac
         for u in ${us[@]}; do
             if [ $h = true ]; then
-                bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r -q $q | grep "Request"
+                bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q | grep "Request"
             else
-                bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r -q $q | grep "Request"
+                bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q | grep "Request"
             fi
         done
     done
