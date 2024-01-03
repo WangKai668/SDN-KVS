@@ -213,13 +213,19 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 std::vector<uint32_t>
 Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
 {
+    uint32_t tot_key_num = 0;
     std::stringstream ss;
     ss << "[";
     for (const auto& req : scheduleRequests)
-        ss << "(req_id=" << req.req_id << ", weight=" << req.weight << ")";
+    {
+        ss << "(req_id=" << req.req_id << ", weight=" << req.weight << ", key_num=" << req.key_num
+           << ")";
+        tot_key_num += req.key_num;
+    }
     ss << "]";
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Do BP-LPT for array(size="
-                                << scheduleRequests.size() << "): " << ss.str());
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
+                                << "] Do BP-LPT for array(size=" << scheduleRequests.size()
+                                << ", tot_key_num=" << tot_key_num << "): " << ss.str());
 
     std::vector<uint32_t> ret;
     std::set<uint32_t> req_set;
@@ -325,6 +331,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     context.schedulePackets.push_back(schedulePacket);
 
     std::map<uint32_t, int64_t> req_wait_time; // Map<request id, max wait time>
+    std::map<uint32_t, uint32_t> req_key_num;  // Map<request id, tot key num>
     for (auto& [server_id, ctx] : m_scheduleContexts)
     {
         if (!ctx.is_heavy) // Not overloaded
@@ -346,6 +353,9 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             if (!req_wait_time.count(req_id))
                 req_wait_time[req_id] = 0;
             req_wait_time[req_id] = std::max(req_wait_time[req_id], wait_time);
+            if (!req_key_num.count(req_id))
+                req_key_num[req_id] = 0;
+            req_key_num[req_id] += packet.sdnKvsHeader.GetKsSiz();
         }
     }
 
@@ -357,6 +367,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         ScheduleRequest scheduleRequest;
         scheduleRequest.req_id = req_id;
         scheduleRequest.weight = 1.0 + 2.0 * wait_time;
+        scheduleRequest.key_num = req_key_num[req_id];
         scheduleRequests.push_back(scheduleRequest);
     }
     // Do BP-LPT algorithm

@@ -69,8 +69,9 @@ class Controller : public OFSwitch13Controller
      */
     struct ScheduleRequest
     {
-        uint32_t req_id; // Request ID
-        double weight;   // Sorted by this weight. Computed in scheduling.
+        uint32_t req_id;  // Request ID
+        double weight;    // Sorted by this weight. Computed in scheduling.
+        uint32_t key_num; // Total key num. For debug.
     };
 
     /**
