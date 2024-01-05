@@ -12,7 +12,7 @@ pattern5 = re.compile(r"\[Controller\]\[\+(.*?)s\] Schedule client packet\(id=(\
 pattern6 = re.compile(r"\[Controller\]\[\+(.*?)s\] Forward packet\(pkt_id=(\d+)\)\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) to the server (\d+)")
 pattern7 = re.compile(r"\[Client\]\[\+(.*?)s\] Received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
 pattern8 = re.compile(r"tot_key_num = (\d+), tot_request_num = (\d+), tot_ks_num = (\d+)")
-pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
+pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
 
 algorithm: str
 

@@ -564,18 +564,13 @@ Controller::ForwardPacket(struct ofl_msg_packet_in* msg,
     // Send the reply within an OpenFlow PacketOut message
     struct ofl_msg_packet_out reply;
     reply.header.type = OFPT_PACKET_OUT;
-    reply.buffer_id = msg->buffer_id;
+    reply.buffer_id = NO_BUFFER;
     reply.in_port = inPort;
     reply.actions_num = 1;
     reply.actions = (struct ofl_action_header**)&action;
-    reply.data_length = 0;
-    reply.data = nullptr;
-    if (msg->buffer_id == NO_BUFFER)
-    {
-        // No packet buffer. Send data back to switch
-        reply.data_length = msg->data_length;
-        reply.data = msg->data;
-    }
+    // No packet buffer. Send data back to switch
+    reply.data_length = msg->data_length;
+    reply.data = msg->data;
 
     int ret = SendToSwitch(swtch, (struct ofl_msg_header*)&reply, xid);
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
