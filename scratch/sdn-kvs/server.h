@@ -89,7 +89,7 @@ class Server : public Application
      * \param packet Packet received from client.
      * \param from Where the packet is from.
      */
-    void HandlePacket(Ptr<Packet> packet);
+    void HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from);
 
     /**
      * Pop a packet from the priority queue to set a new sending event.

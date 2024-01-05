@@ -233,7 +233,7 @@ Server::HandleRead(Ptr<Socket> socket)
         }
         else
         {
-            HandlePacket(packet);
+            HandlePacket(packet, socket, from);
             // Schedule send packet event
             Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
             NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
@@ -247,7 +247,7 @@ Server::HandleRead(Ptr<Socket> socket)
 }
 
 void
-Server::HandlePacket(Ptr<Packet> packet)
+Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
 {
     // Deserialize SDN-KVS header
     SdnKvsHeader sdnKvsHeader;
@@ -260,6 +260,19 @@ Server::HandlePacket(Ptr<Packet> packet)
     m_queue_size += sdnKvsHeader.GetKsSiz();
     m_lst = cur;
     sdnKvsHeader.SetHeavy(0); // Set heavy flag when sending packet
+    if (m_queue_size >= m_tqs)
+    {
+        Ptr<Packet> pkt = Create<Packet>();
+        SdnKvsHeader hdr;
+        hdr.SetId(0);
+        hdr.SetReqId(sdnKvsHeader.GetReqId());
+        hdr.SetKsSiz(sdnKvsHeader.GetKsSiz());
+        hdr.SetHeavy(1U);
+        hdr.SetQueueSiz(m_queue_size);
+        hdr.SetServerRate(m_server_rate);
+        pkt->AddHeader(hdr);
+        socket->SendTo(pkt, 0, from);
+    }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
 

@@ -492,7 +492,8 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
             Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
     }
     // Forward packet to client
-    ForwardPacket(msg, swtch, xid);
+    if (sdnKvsHeader.GetId() != 0)
+        ForwardPacket(msg, swtch, xid);
     // Free message after forwarding packet
     ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
 }
