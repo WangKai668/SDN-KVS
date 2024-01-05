@@ -27,6 +27,8 @@ ServerHelper::ServerHelper(uint16_t port,
                  BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SRPT));
     SetAttribute("SbfEnabled",
                  BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SBF));
+    SetAttribute("SdnKvsEnabled",
+                 BooleanValue(algorithm.server_algorithm == ServerSchedulingType::SDN_KVS));
 }
 
 void

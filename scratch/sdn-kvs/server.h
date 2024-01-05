@@ -117,9 +117,10 @@ class Server : public Application
     uint32_t m_tqs;         //!< Server TQS
     int64_t m_lst;          //!< Last time to update queue size
 
-    bool m_srpt_enabled; //!< Whether SRPT algorithm is enabled on the server
-    bool m_sbf_enabled;  //!< Whether SBF algorithm is enabled on the server
-    EventId m_cur_event; //!< Current sending event
+    bool m_srpt_enabled;    //!< Whether SRPT algorithm is enabled on the server
+    bool m_sbf_enabled;     //!< Whether SBF algorithm is enabled on the server
+    bool m_sdn_kvs_enabled; //!< Whether SDN-KVS algorithm is enabled on the server
+    EventId m_cur_event;    //!< Current sending event
 
     //!< Priority queue used by SRPT/SBF algorithm
     std::priority_queue<ScheduleContext, std::vector<ScheduleContext>, Compare> m_queue;

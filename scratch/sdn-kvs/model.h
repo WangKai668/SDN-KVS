@@ -42,6 +42,7 @@ enum class ServerSchedulingType
 {
     SRPT,
     SBF,
+    SDN_KVS,
     NONE // No scheduling. FIFO
 };
 
@@ -106,6 +107,9 @@ operator<<(std::ostream& os, ServerSchedulingType c)
         break;
     case ServerSchedulingType::SBF:
         os << "SBF";
+        break;
+    case ServerSchedulingType::SDN_KVS:
+        os << "SDN_KVS";
         break;
     case ServerSchedulingType::NONE:
     default:
@@ -182,7 +186,7 @@ __attribute__((unused)) static SchedulingType DAS = {ServerSchedulingType::SRPT,
                                                      ClientSchedulingType::DAS,
                                                      ControllerSchedulingType::NONE,
                                                      "DAS"};
-__attribute__((unused)) static SchedulingType SDN_KVS = {ServerSchedulingType::NONE,
+__attribute__((unused)) static SchedulingType SDN_KVS = {ServerSchedulingType::SDN_KVS,
                                                          ClientSchedulingType::NONE,
                                                          ControllerSchedulingType::SDN_KVS,
                                                          "SDN-KVS"};

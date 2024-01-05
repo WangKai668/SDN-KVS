@@ -62,6 +62,11 @@ Server::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&Server::m_sbf_enabled),
                           MakeBooleanChecker())
+            .AddAttribute("SdnKvsEnabled",
+                          "Whether SDN-KVS algorithm is enabled on the server.",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&Server::m_sdn_kvs_enabled),
+                          MakeBooleanChecker())
             // MODIFY END
             .AddTraceSource("Rx",
                             "A packet has been received",
@@ -260,7 +265,7 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
     m_queue_size += sdnKvsHeader.GetKsSiz();
     m_lst = cur;
     sdnKvsHeader.SetHeavy(0); // Set heavy flag when sending packet
-    if (m_queue_size >= m_tqs)
+    if (m_sdn_kvs_enabled && m_queue_size >= m_tqs)
     {
         Ptr<Packet> pkt = Create<Packet>();
         SdnKvsHeader hdr;
