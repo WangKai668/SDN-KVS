@@ -8,7 +8,7 @@ mute=false
 ifZipfian=false
 # The distribution type for generating key(0: POSSION, 1: PARETO)
 distribution_type=1
-# The keyset size type(0: HEAVY, 1: LIGHT)
+# The keyset size type(0: LIGHT, 1: HEAVY)
 keyset_size_type=0
 # Utilization
 uti=0.7
