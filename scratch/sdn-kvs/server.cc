@@ -286,6 +286,10 @@ Server::ScheduleEvent()
                                 << "(queue_siz=" << m_queue_size << ", update_time="
                                 << MilliSeconds(m_lst).As(Time::S) << ") begin to handle packet"
                                 << ss.str() << ", it will finish handled in " << dt.As(Time::S));
+        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                                << "(queue_siz=" << m_queue_size
+                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                                << ") will finish handled in " << dt.As(Time::S));
         m_cur_event =
             Simulator::Schedule(dt, &Server::SendPacket, this, ctx.socket, ctx.packet, ctx.from);
     }
@@ -315,6 +319,7 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
         }
     }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
+    sdnKvsHeader.SetServerRate(m_server_rate);
     packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);

@@ -12,8 +12,8 @@
 #include "ns3/ofswitch13-module.h"
 
 #include <numeric>
+#include <random>
 #include <regex>
-
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
@@ -22,10 +22,10 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
  * Parameter configure
  */
 SchedulingType algorithm = SchedulingStrategy::FIFO;
-bool debug = false;    // Enable DEBUG log
-bool mute = false;     // Only print client application logs for analysis
-bool ifZipfian = true; // Whether there is a hotspot server
-bool req_table_from_file = false;
+bool debug = false;               // Enable DEBUG log
+bool mute = false;                // Only print client application logs for analysis
+bool ifZipfian = true;            // Whether there is a hotspot server
+bool req_table_from_file = false; // Whether get request table from request_table.txt file
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
 KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
 double uti = 0.7;                                     // Utilization
@@ -37,7 +37,7 @@ uint32_t server_tqs = 64;                      // Server TQS
 uint32_t client_num = 15;                      // The number of client node
 uint32_t server_num = 15;                      // The number of server node
 uint32_t key_num = 50000; // The upper bound of the total number of keys(n keys = 1 keyset)
-static const int request_size = 40;
+static const int request_size = 60;
 /**
  * Global variable
  */
@@ -45,6 +45,9 @@ uint32_t tot_key_num = 0;     // The total number of keys(it is also the sum of 
 uint32_t tot_request_num = 0; // The total number of requests
 uint32_t tot_ks_num = 0;      // The total number of keyset
 std::map<uint32_t, std::vector<RequestTableEntry>> req_table; // Key: client id
+std::mt19937 gen(1701);
+std::poisson_distribution<> req_siz_possion_rng(request_size);
+Ptr<ParetoRandomVariable> req_siz_rng = CreateObject<ParetoRandomVariable>();
 
 /**
  * Generate the number of keyset in a request.
@@ -58,8 +61,8 @@ generate_ks_num(Ptr<ParetoRandomVariable> x)
     uint32_t y = x->GetInteger();
     if (y >= server_num)
         value = server_num;
-    else if (y == 1)
-        value = 2;
+    else if (y <= 5)
+        value = 5;
     else
         value = y;
     return value;
@@ -75,6 +78,14 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, Ptr<RandomVariab
     while (true)
     {
         uint32_t x = rng->GetInteger() - 1; // [0, server_num - 1]
+        if (ifZipfian)
+        {
+            int value1 = server_num * 0.2 < 1 ? 1 : server_num * 0.2 + 1;
+            // 生成 value1 * (value - 1) 到 value1 * x 之间的随机数
+            int value2 = (rand() % (value1 + 1)) + value1 * (x - 1);
+            x = value2 % server_num;
+        }
+
         if (is_add[x] == false)
         {
             ret = x;
@@ -83,6 +94,24 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, Ptr<RandomVariab
         }
     }
     return ret; // Start from 0
+}
+
+uint32_t
+generate_request_size()
+{
+    uint32_t x;
+    switch (req_size_distribution_type)
+    {
+    case POSSION: {
+        x = req_siz_possion_rng(gen);
+        break;
+    }
+    case PARETO: {
+        x = req_siz_rng->GetInteger();
+        break;
+    }
+    }
+    return x;
 }
 
 /**
@@ -137,37 +166,22 @@ init_request_table(NodeContainer& serverNodes)
         client_rng->SetAttribute("Min", DoubleValue(0));
         client_rng->SetAttribute("Max", DoubleValue(client_num - 1));
 
-        Ptr<RandomVariableStream> req_siz_rng;
-        switch (req_size_distribution_type)
-        {
-        case POSSION: {
-            // TODO: Possion
-            req_siz_rng = CreateObject<UniformRandomVariable>();
-            req_siz_rng->SetAttribute("Min", DoubleValue(request_size - 5));
-            req_siz_rng->SetAttribute("Max", DoubleValue(request_size + 5));
-            break;
-        }
-        case PARETO: {
-            req_siz_rng = CreateObject<ParetoRandomVariable>();
-            double alpha = 2.0;
-            double x_min = request_size * (alpha - 1) / alpha;
-            req_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
-            req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
-            req_siz_rng->SetAttribute("Bound", DoubleValue(100));
-            break;
-        }
-        }
+        double alpha = 2.0;
+        double x_min = request_size * (alpha - 1) / alpha;
+        req_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
+        req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
+        req_siz_rng->SetAttribute("Bound", DoubleValue(1000));
 
         Ptr<ParetoRandomVariable> ks_num_rng = CreateObject<ParetoRandomVariable>();
-        ks_num_rng->SetAttribute("Shape", DoubleValue(1.2));
-        ks_num_rng->SetAttribute("Bound", DoubleValue(9.0));
+        ks_num_rng->SetAttribute("Shape", DoubleValue(1.5));
+        ks_num_rng->SetAttribute("Bound", DoubleValue(server_num));
 
         Ptr<RandomVariableStream> server_rng;
         if (ifZipfian)
         {
             server_rng = CreateObject<ZipfRandomVariable>();
             server_rng->SetAttribute("N", IntegerValue(server_num));
-            server_rng->SetAttribute("Alpha", DoubleValue(2.0));
+            server_rng->SetAttribute("Alpha", DoubleValue(1));
         }
         else
         {
@@ -187,7 +201,8 @@ init_request_table(NodeContainer& serverNodes)
             if (req_table.count(client_id) == 0)
                 req_table[client_id] = std::vector<RequestTableEntry>();
             // The upper bound of request size
-            uint32_t req_siz = req_siz_rng->GetInteger();
+            uint32_t req_siz = generate_request_size();
+            NS_LOG_UNCOND("debug req size " << req_siz);
             req_siz = req_siz > key_num ? key_num : req_siz;
             // The upper bound of the keyset number of this request
             uint32_t ks_num = generate_ks_num(ks_num_rng);
@@ -198,7 +213,7 @@ init_request_table(NodeContainer& serverNodes)
             case HEAVY: {
                 ks_siz_rng = CreateObject<ParetoRandomVariable>();
                 double alpha = 2.0;
-                double mean = 1.0 * request_size / ks_num;
+                double mean = 1.0 * req_siz / ks_num;
                 double x_min = (alpha - 1) * mean / alpha;
                 ks_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
                 ks_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
@@ -207,12 +222,10 @@ init_request_table(NodeContainer& serverNodes)
             }
             case LIGHT: {
                 ks_siz_rng = CreateObject<UniformRandomVariable>();
-                ks_siz_rng->SetAttribute(
-                    "Min",
-                    DoubleValue(std::max(1.0, 1.0 * request_size / (ks_num + 3))));
-                ks_siz_rng->SetAttribute(
-                    "Max",
-                    DoubleValue(1.0 * request_size / (std::max(4U, ks_num) - 3)));
+                ks_siz_rng->SetAttribute("Min",
+                                         DoubleValue(std::max(1.0, 1.0 * req_siz / (ks_num + 3))));
+                ks_siz_rng->SetAttribute("Max",
+                                         DoubleValue(1.0 * req_siz / (std::max(4U, ks_num) - 3)));
                 break;
             }
             }
@@ -221,16 +234,21 @@ init_request_table(NodeContainer& serverNodes)
             // greater than the upper bound.
             uint32_t iter_ks_siz = 0;       // Each keyset size generated
             uint32_t bottleneck_keyset = 0; // bottleneck keyset size
-            for (uint32_t i = req_siz, j = 0; i > 0 && j < ks_num; i -= iter_ks_siz, j++)
+            NS_LOG_UNCOND("debug keyset num * " << ks_num);
+            for (uint32_t i = req_siz, j = 0; i > 0 && j < ks_num; j++)
             {
                 iter_ks_siz = ks_siz_rng->GetInteger();
                 if (iter_ks_siz > i)
                     iter_ks_siz = i;
+                // if (j == ks_num - 1)
+                //     iter_ks_siz = i;
 
                 if (iter_ks_siz > bottleneck_keyset)
                     bottleneck_keyset = iter_ks_siz;
 
+                NS_LOG_UNCOND("debug keyset size " << iter_ks_siz);
                 keyset.push_back(iter_ks_siz);
+                i = i - iter_ks_siz;
             }
             // Count the total size and total number of keysets
             tot_key_num += std::accumulate(keyset.begin(), keyset.end(), 0);
@@ -412,7 +430,7 @@ init_parameter(int argc, char* argv[])
     CommandLine cmd;
     uint32_t algorithm_index = 0;                // Default: FIFO
     uint32_t distribution_type_index = 0;        // Default: POSSION
-    uint32_t keyset_size_type_index = 0;         // Default: HEAVY
+    uint32_t keyset_size_type_index = 0;         // Default: LIGHT
     std::string server_rate_ratio_str = "1:0:0"; // Default: 1:0:0
     cmd.AddValue("algorithm",
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
@@ -424,7 +442,7 @@ init_parameter(int argc, char* argv[])
                  "The distribution type for generating key(0: POSSION, 1: PARETO)",
                  distribution_type_index);
     cmd.AddValue("keyset_size_type",
-                 "The keyset size type(0: HEAVY, 1: LIGHT)",
+                 "The keyset size type(0: LIGHT, 1: HEAVY)",
                  keyset_size_type_index);
     cmd.AddValue("uti", "Utilization", uti);
     cmd.AddValue("simTime", "Simulator running time(unit: second)", simTime);
@@ -471,11 +489,11 @@ init_parameter(int argc, char* argv[])
     switch (keyset_size_type_index)
     {
     case 1:
-        keyset_size_type = LIGHT;
+        keyset_size_type = HEAVY;
         break;
     case 0:
     default:
-        keyset_size_type = HEAVY;
+        keyset_size_type = LIGHT;
     }
 
     // Parse server rate ratio string
