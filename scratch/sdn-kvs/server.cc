@@ -212,7 +212,8 @@ Server::HandleRead(Ptr<Socket> socket)
         {
             m_queue_size += sdnKvsHeader.GetKsSiz();
             // Build schedule context
-            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from, ServerSchedulingType::SRPT};
+            ScheduleContext ctx =
+                {Simulator::Now(), sdnKvsHeader, socket, packet, from, ServerSchedulingType::SRPT};
             // Push the context into the queue
             m_queue.push(ctx);
             if (!m_cur_event.IsRunning())
@@ -226,7 +227,8 @@ Server::HandleRead(Ptr<Socket> socket)
         {
             m_queue_size += sdnKvsHeader.GetKsSiz();
             // Build schedule context
-            ScheduleContext ctx = {sdnKvsHeader, socket, packet, from, ServerSchedulingType::SBF};
+            ScheduleContext ctx =
+                {Simulator::Now(), sdnKvsHeader, socket, packet, from, ServerSchedulingType::SBF};
             // Push the context into the queue
             m_queue.push(ctx);
             if (!m_cur_event.IsRunning())

@@ -41,6 +41,7 @@ class Server : public Application
      */
     struct ScheduleContext
     {
+        Time arrive_time;
         SdnKvsHeader sdnKvsHeader; // Avoid deserialize repeatedlly
         Ptr<Socket> socket;
         Ptr<Packet> packet;
@@ -58,14 +59,20 @@ class Server : public Application
             switch (ctx1.algorithm)
             {
             // used by SBF algorithm
-            case ServerSchedulingType::SBF:
+            case ServerSchedulingType::SBF: {
+                if (ctx1.sdnKvsHeader.GetBottleneckKsSiz() ==
+                    ctx2.sdnKvsHeader.GetBottleneckKsSiz())
+                    return ctx1.arrive_time.GetMilliSeconds() > ctx2.arrive_time.GetMilliSeconds();
                 return ctx1.sdnKvsHeader.GetBottleneckKsSiz() >
                        ctx2.sdnKvsHeader.GetBottleneckKsSiz();
-                break;
+            }
             default:
             // used by SRPT algorithm
-            case ServerSchedulingType::SRPT:
+            case ServerSchedulingType::SRPT: {
+                if (ctx1.sdnKvsHeader.GetPriority() == ctx2.sdnKvsHeader.GetPriority())
+                    return ctx1.arrive_time.GetMilliSeconds() > ctx2.arrive_time.GetMilliSeconds();
                 return ctx1.sdnKvsHeader.GetPriority() > ctx2.sdnKvsHeader.GetPriority();
+            }
             }
         };
     };
