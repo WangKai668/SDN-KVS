@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 pattern5 = re.compile(r"\[Controller\]\[\+(.*?)s\] Do BP-LPT for array\(size=(.*?), tot_key_num=(.*?)\): \[")
 pattern3 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) will finish handled in \+(.*?)s")
 pattern4 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) sent response packet")
-pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
-
+pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
 algorithm=""
 ctrl_queue_size={}
 all_server_queue_size_receive={}
@@ -42,7 +41,6 @@ for server_id in all_server_queue_size_receive.keys():
 
 
 plt.plot(ctrl_queue_size.keys(),ctrl_queue_size.values(),label="ctrl")
-# # 添加标题和标签
 plt.title('queue size in server for {}'.format(algorithm))
 plt.xlabel('time(ms)')
 plt.ylabel('queue size')
@@ -56,7 +54,6 @@ for server_id in all_server_queue_size_sent.keys():
 
 
 plt.plot(ctrl_queue_size.keys(),ctrl_queue_size.values(),label="ctrl")
-# # 添加标题和标签
 plt.title('queue size in server for {}'.format(algorithm))
 plt.xlabel('time(ms)')
 plt.ylabel('queue size')

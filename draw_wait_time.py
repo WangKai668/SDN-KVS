@@ -4,7 +4,8 @@ pattern6 = re.compile(r"\[Controller\]\[\+(.*?)s\] Forward packet\(pkt_id=(\d+)\
 pattern5 = re.compile(r"\[Controller\]\[\+(.*?)s\] Schedule client packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\)")
 pattern3 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
 pattern4 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) sent response packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) to (\d+\.\d+\.\d+\.\d+) port (\d+)")
-pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
+pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
+
 algorithm=""
 ctrl_recv_time: dict[int, float] = {}
 ctrl_send_time: dict[int, float] = {}
@@ -57,10 +58,10 @@ for id in server_recv_time.keys():
 
 ks_server_wait_time_sorted = {key: ks_server_wait_time[key] for key in sorted(ks_server_wait_time.keys())}
 
-print("ctrl_send_cnt=",ctrl_send_cnt," ctrl_recv_cnt=",ctrl_recv_cnt)
-print(ks_ctrl_wait_time_sorted)
-print("server_send_cnt=",server_send_cnt," server_recv_cnt=",server_recv_cnt)
-print(ks_server_wait_time_sorted)
+# print("ctrl_send_cnt=",ctrl_send_cnt," ctrl_recv_cnt=",ctrl_recv_cnt)
+# print(ks_ctrl_wait_time_sorted)
+# print("server_send_cnt=",server_send_cnt," server_recv_cnt=",server_recv_cnt)
+# print(ks_server_wait_time_sorted)
 
 
 # 绘制散点图
@@ -72,4 +73,4 @@ plt.title('keyset wait time for {}'.format(algorithm))
 plt.xlabel('keyset id')
 plt.ylabel('wait_time(ms)')
 plt.legend()
-plt.savefig('scatter_plot.png')
+plt.savefig('wait_time.png')
