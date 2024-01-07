@@ -205,7 +205,7 @@ init_request_table(NodeContainer& serverNodes)
             NS_LOG_UNCOND("debug req size " << req_siz);
             req_siz = req_siz > key_num ? key_num : req_siz;
             // The upper bound of the keyset number of this request
-            uint32_t ks_num = generate_ks_num(ks_num_rng);
+            uint32_t ks_num = server_num;
 
             Ptr<RandomVariableStream> ks_siz_rng;
             switch (keyset_size_type)
@@ -222,10 +222,8 @@ init_request_table(NodeContainer& serverNodes)
             }
             case LIGHT: {
                 ks_siz_rng = CreateObject<UniformRandomVariable>();
-                ks_siz_rng->SetAttribute("Min",
-                                         DoubleValue(std::max(1.0, 1.0 * req_siz / (ks_num + 3))));
-                ks_siz_rng->SetAttribute("Max",
-                                         DoubleValue(1.0 * req_siz / (std::max(4U, ks_num) - 3)));
+                ks_siz_rng->SetAttribute("Min", DoubleValue(1.0));
+                ks_siz_rng->SetAttribute("Max", DoubleValue((req_siz*1.0)/2));
                 break;
             }
             }
@@ -240,8 +238,8 @@ init_request_table(NodeContainer& serverNodes)
                 iter_ks_siz = ks_siz_rng->GetInteger();
                 if (iter_ks_siz > i)
                     iter_ks_siz = i;
-                // if (j == ks_num - 1)
-                //     iter_ks_siz = i;
+                if (j == ks_num - 1)
+                    iter_ks_siz = i;
 
                 if (iter_ks_siz > bottleneck_keyset)
                     bottleneck_keyset = iter_ks_siz;

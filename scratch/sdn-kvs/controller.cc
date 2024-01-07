@@ -409,8 +409,8 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             pkt->sdnKvsHeader.Print(ss);
 
             ScheduleContext& ctx = m_scheduleContexts[pkt->dstServerId];
-            Time dt = Seconds((1.0 * ctx.queue_size) / (1000.0 * ctx.server_rate) +
-                              0.000005 * dt_base[pkt->dstServerId]);
+            Time dt = Seconds((1.0 * std::max(ctx.queue_size-5,1U)) / (1000.0 * ctx.server_rate) +
+                              0.0005 * dt_base[pkt->dstServerId]);
             dt_base[pkt->dstServerId] += 1;
             // Remove send event set before
             if (pkt->eventId.IsRunning())
