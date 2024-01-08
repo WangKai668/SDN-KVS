@@ -50,25 +50,6 @@ std::poisson_distribution<> req_siz_possion_rng(request_size);
 Ptr<ParetoRandomVariable> req_siz_rng = CreateObject<ParetoRandomVariable>();
 
 /**
- * Generate the number of keyset in a request.
- */
-uint32_t
-generate_ks_num(Ptr<ParetoRandomVariable> x)
-{
-    if (server_num <= 1)
-        return 1;
-    uint32_t value = 0;
-    uint32_t y = x->GetInteger();
-    if (y >= server_num)
-        value = server_num;
-    else if (y <= 5)
-        value = 5;
-    else
-        value = y;
-    return value;
-}
-
-/**
  * Generate destination server id(start from 0) for keyset
  */
 uint32_t
@@ -115,225 +96,11 @@ generate_request_size()
 }
 
 /**
- * Prebuild request table
- * \param serverNodes Node container of server nodes. It is used to get IPv4 address from node.
+ * Print the request table
  */
 void
-init_request_table(NodeContainer& serverNodes)
+print_request_table()
 {
-    if (req_table_from_file)
-    {
-        std::ifstream read_file;
-        read_file.open("/home/ren/wck/SDN-KVS/request_table.txt", std::ios::in);
-        if (read_file.is_open())
-        {
-            std::string str;
-            while (getline(read_file, str))
-            {
-                std::regex pattern(
-                    "\\[[0-9]+\\] \\(id=(\\d+), st=(.*?), src_client=(\\d+), "
-                    "dst_server=(\\d+), dst_ip=(\\d+\\.\\d+\\.\\d+\\.\\d+), req_id=(\\d+), "
-                    "ks_siz=(\\d+), bottleneck_ks_size=(\\d+)\\)");
-
-                std::smatch result;
-                if (std::regex_search(str, result, pattern))
-                {
-                    RequestTableEntry entry;
-                    entry.id = std::stoul(result[1].str());
-                    entry.st = std::stod(result[2].str());
-                    entry.src_client = std::stoul(result[3].str());
-                    entry.dst_server = std::stoul(result[4].str());
-                    entry.dst_ip = result[5].str();
-                    entry.req_id = std::stoul(result[6].str());
-                    entry.ks_siz = std::stoul(result[7].str());
-                    entry.bottleneck_ks_size = std::stoul(result[8].str());
-                    entry.dst_port = server_port;
-                    tot_key_num += entry.ks_siz;
-                    tot_ks_num++;
-                    tot_request_num = std::max(tot_request_num, entry.req_id);
-                    req_table[entry.src_client].push_back(entry);
-                }
-            }
-        }
-        else
-        {
-            NS_LOG_UNCOND("BAD");
-        }
-    }
-    else
-    {
-        Ptr<UniformRandomVariable> client_rng = CreateObject<UniformRandomVariable>();
-        client_rng->SetAttribute("Min", DoubleValue(0));
-        client_rng->SetAttribute("Max", DoubleValue(client_num - 1));
-
-        double alpha = 2.0;
-        double x_min = request_size * (alpha - 1) / alpha;
-        req_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
-        req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
-        req_siz_rng->SetAttribute("Bound", DoubleValue(1000));
-
-        Ptr<ParetoRandomVariable> ks_num_rng = CreateObject<ParetoRandomVariable>();
-        ks_num_rng->SetAttribute("Shape", DoubleValue(1.5));
-        ks_num_rng->SetAttribute("Bound", DoubleValue(server_num));
-
-        Ptr<RandomVariableStream> server_rng;
-        if (ifZipfian)
-        {
-            server_rng = CreateObject<ZipfRandomVariable>();
-            server_rng->SetAttribute("N", IntegerValue(server_num));
-            server_rng->SetAttribute("Alpha", DoubleValue(1));
-        }
-        else
-        {
-            server_rng = CreateObject<UniformRandomVariable>();
-            server_rng->SetAttribute("Min", DoubleValue(1));
-            server_rng->SetAttribute("Max", DoubleValue(server_num));
-        }
-
-        std::vector<RequestTableEntry> vec; // Temporary vector to store entry
-        uint32_t req_id = 1;
-        while (key_num > 0)
-        {
-            std::vector<uint32_t> keyset; // All keysets generated for this request
-
-            // The client that this request was sent from
-            uint32_t client_id = client_rng->GetInteger();
-            if (req_table.count(client_id) == 0)
-                req_table[client_id] = std::vector<RequestTableEntry>();
-            // The upper bound of request size
-            uint32_t req_siz = generate_request_size();
-            NS_LOG_UNCOND("debug req size " << req_siz);
-            req_siz = req_siz > key_num ? key_num : req_siz;
-            // The upper bound of the keyset number of this request
-            uint32_t ks_num = server_num;
-
-            Ptr<RandomVariableStream> ks_siz_rng;
-            switch (keyset_size_type)
-            {
-            case HEAVY: {
-                ks_siz_rng = CreateObject<ParetoRandomVariable>();
-                double alpha = 2.0;
-                double mean = 1.0 * req_siz / ks_num;
-                double x_min = (alpha - 1) * mean / alpha;
-                ks_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
-                ks_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
-                ks_siz_rng->SetAttribute("Bound", DoubleValue(req_siz));
-                break;
-            }
-            case LIGHT: {
-                ks_siz_rng = CreateObject<UniformRandomVariable>();
-                ks_siz_rng->SetAttribute("Min", DoubleValue(1.0));
-                ks_siz_rng->SetAttribute("Max", DoubleValue((req_siz*1.0)/2));
-                break;
-            }
-            }
-
-            // Generate keyset for request. The generated keyset's size and number will not be
-            // greater than the upper bound.
-            uint32_t iter_ks_siz = 0;       // Each keyset size generated
-            uint32_t bottleneck_keyset = 0; // bottleneck keyset size
-            NS_LOG_UNCOND("debug keyset num * " << ks_num);
-            for (uint32_t i = req_siz, j = 0; i > 0 && j < ks_num; j++)
-            {
-                iter_ks_siz = ks_siz_rng->GetInteger();
-                if (iter_ks_siz > i)
-                    iter_ks_siz = i;
-                if (j == ks_num - 1)
-                    iter_ks_siz = i;
-
-                if (iter_ks_siz > bottleneck_keyset)
-                    bottleneck_keyset = iter_ks_siz;
-
-                NS_LOG_UNCOND("debug keyset size " << iter_ks_siz);
-                keyset.push_back(iter_ks_siz);
-                i = i - iter_ks_siz;
-            }
-            // Count the total size and total number of keysets
-            tot_key_num += std::accumulate(keyset.begin(), keyset.end(), 0);
-            tot_ks_num += keyset.size();
-            std::unordered_map<uint32_t, bool> is_add;
-            for (uint32_t ks_siz : keyset)
-            {
-                // The server that this keyset data packet was sent to
-                uint32_t server_id = generate_dst_server(is_add, server_rng);
-                // Get IPv4 address from server id
-                Ptr<Node> serverNode = serverNodes.Get(server_id);
-                std::stringstream ss;
-                ss << serverNode->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
-
-                // Build request table entry
-                RequestTableEntry entry;
-                entry.id = 0;   // Initialize it later
-                entry.st = 0.0; // Initialize it later
-                entry.src_client = client_id;
-                entry.dst_server = server_id;
-                entry.dst_ip = ss.str();
-                entry.dst_port = server_port;
-                entry.req_id = req_id;
-                entry.ks_siz = ks_siz;
-                entry.bottleneck_ks_size = bottleneck_keyset;
-
-                // Record this entry to the temporary vector
-                vec.push_back(entry);
-            }
-
-            key_num -= req_siz;
-            ++tot_request_num; // Count the total number of requests
-            if (key_num <= 0)
-                break;
-            req_id++;
-        }
-
-        // Initialize send time
-        // double req_mean = 1.0 * tot_key_num / tot_ks_num;
-        double req_mean = 1.0 * tot_key_num / tot_request_num;
-        double send_time = 2;
-        uint32_t ratio_tot = server_rate_ratio.r1 + server_rate_ratio.r2 + server_rate_ratio.r3;
-        double server_rate =
-            1.0 * (server_rate_ratio.r1 + server_rate_ratio.r2 * 2 + server_rate_ratio.r3 * 3) /
-            ratio_tot;
-        double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
-        std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
-
-        Ptr<ExponentialRandomVariable> send_time_rng = CreateObject<ExponentialRandomVariable>();
-        send_time_rng->SetAttribute("Mean", DoubleValue(t_mean));
-
-        for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
-        {
-            double r = 0;
-            while (true)
-            {
-                r = send_time_rng->GetValue();
-                if (r != 0)
-                    break;
-            }
-            send_time += Seconds(r).GetSeconds();
-            send_time_mp[req_id] = send_time;
-        }
-
-        // Fill send time for each request table entry,
-        // and insert each entry to the request table
-        for (auto& entry : vec)
-        {
-            entry.st = send_time_mp[entry.req_id];
-            req_table[entry.src_client].push_back(entry);
-        }
-
-        // Sort vector by send time
-        auto cmp = [](RequestTableEntry& entry1, RequestTableEntry& entry2) -> bool {
-            return entry1.st < entry2.st;
-        };
-        for (auto& [client_id, vec] : req_table)
-            std::sort(vec.begin(), vec.end(), cmp);
-
-        // Initialize keyset ID
-        uint32_t id_cnt = 0;
-        for (auto& [client_id, vec] : req_table)
-            for (auto& entry : vec)
-                entry.id = ++id_cnt;
-    }
-
-    // Print the request table
     NS_LOG_UNCOND("tot_key_num = " << tot_key_num << ", tot_request_num = " << tot_request_num
                                    << ", tot_ks_num = " << tot_ks_num);
     for (const auto& [client_id, entry_vec] : req_table)
@@ -349,6 +116,260 @@ init_request_table(NodeContainer& serverNodes)
             NS_LOG_UNCOND(ss.str());
         }
     }
+}
+
+/**
+ * Generate the random number
+ *
+ * \param min Min number
+ * \param max Max number
+ * \param n The number count
+ */
+std::vector<uint32_t>
+generate_uniform_random_number(uint32_t min, uint32_t max, uint32_t n)
+{
+    std::vector<uint32_t> ret;
+    if (n <= 0)
+        return ret;
+    Ptr<UniformRandomVariable> rng = CreateObject<UniformRandomVariable>();
+    rng->SetAttribute("Min", DoubleValue(min));
+    rng->SetAttribute("Max", DoubleValue(max));
+    std::vector<uint32_t> random_vec;
+    random_vec.push_back(min);
+    random_vec.push_back(max);
+    for (uint32_t i = 1; i <= n - 1; i++)
+        random_vec.push_back(rng->GetInteger());
+    std::sort(random_vec.begin(), random_vec.end());
+    for (uint32_t i = 1; i < random_vec.size(); i++)
+    {
+        uint32_t val = random_vec[i] - random_vec[i - 1];
+        ret.push_back(val);
+    }
+    return ret;
+}
+
+/**
+ * Build request table from file
+ */
+void
+init_request_table_from_file()
+{
+    std::ifstream read_file;
+    read_file.open("/home/ren/wck/SDN-KVS/request_table.txt", std::ios::in);
+    if (read_file.is_open())
+    {
+        std::string str;
+        while (getline(read_file, str))
+        {
+            std::regex pattern(
+                "\\[[0-9]+\\] \\(id=(\\d+), st=(.*?), src_client=(\\d+), "
+                "dst_server=(\\d+), dst_ip=(\\d+\\.\\d+\\.\\d+\\.\\d+), req_id=(\\d+), "
+                "ks_siz=(\\d+), bottleneck_ks_size=(\\d+)\\)");
+
+            std::smatch result;
+            if (std::regex_search(str, result, pattern))
+            {
+                RequestTableEntry entry;
+                entry.id = std::stoul(result[1].str());
+                entry.st = std::stod(result[2].str());
+                entry.src_client = std::stoul(result[3].str());
+                entry.dst_server = std::stoul(result[4].str());
+                entry.dst_ip = result[5].str();
+                entry.req_id = std::stoul(result[6].str());
+                entry.ks_siz = std::stoul(result[7].str());
+                entry.bottleneck_ks_size = std::stoul(result[8].str());
+                entry.dst_port = server_port;
+                tot_key_num += entry.ks_siz;
+                tot_ks_num++;
+                tot_request_num = std::max(tot_request_num, entry.req_id);
+                req_table[entry.src_client].push_back(entry);
+            }
+        }
+    }
+    else
+    {
+        NS_LOG_UNCOND("Cannot open file");
+    }
+}
+
+/**
+ * Prebuild request table
+ * \param serverNodes Node container of server nodes. It is used to get IPv4 address from node.
+ */
+void
+init_request_table(NodeContainer& serverNodes)
+{
+    Ptr<UniformRandomVariable> client_rng = CreateObject<UniformRandomVariable>();
+    client_rng->SetAttribute("Min", DoubleValue(0));
+    client_rng->SetAttribute("Max", DoubleValue(client_num - 1));
+
+    double alpha = 2.0;
+    double x_min = request_size * (alpha - 1) / alpha;
+    req_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
+    req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
+    req_siz_rng->SetAttribute("Bound", DoubleValue(1000));
+
+    Ptr<UniformRandomVariable> ks_num_rng = CreateObject<UniformRandomVariable>();
+    ks_num_rng->SetAttribute("Min", DoubleValue(1));
+    ks_num_rng->SetAttribute("Max", DoubleValue(server_num));
+
+    Ptr<RandomVariableStream> server_rng;
+    if (ifZipfian)
+    {
+        server_rng = CreateObject<ZipfRandomVariable>();
+        server_rng->SetAttribute("N", IntegerValue(server_num));
+        server_rng->SetAttribute("Alpha", DoubleValue(1));
+    }
+    else
+    {
+        server_rng = CreateObject<UniformRandomVariable>();
+        server_rng->SetAttribute("Min", DoubleValue(1));
+        server_rng->SetAttribute("Max", DoubleValue(server_num));
+    }
+
+    std::vector<RequestTableEntry> vec; // Temporary vector to store entry
+    uint32_t req_id = 1;
+    while (key_num > 0)
+    {
+        std::vector<uint32_t> keyset; // All keysets generated for this request
+
+        // The client that this request was sent from
+        uint32_t client_id = client_rng->GetInteger();
+        if (req_table.count(client_id) == 0)
+            req_table[client_id] = std::vector<RequestTableEntry>();
+        // The upper bound of request size
+        uint32_t req_siz = generate_request_size();
+        NS_LOG_UNCOND("debug req size " << req_siz);
+        req_siz = req_siz > key_num ? key_num : req_siz;
+        // The upper bound of the keyset number of this request
+        uint32_t ks_num = server_num;
+
+        // Generate keyset for request. The generated keyset's size and number will not be
+        // greater than the upper bound.
+        switch (keyset_size_type)
+        {
+        case HEAVY: {
+            uint32_t heavy_siz = uint32_t(ceil(req_siz * 0.8));
+            uint32_t heavy_cnt = uint32_t(ceil(ks_num * 0.2));
+            uint32_t light_siz = req_siz - heavy_siz;
+            uint32_t light_cnt = ks_num - heavy_cnt;
+            std::vector<uint32_t> heavy_vec =
+                generate_uniform_random_number(0, heavy_siz, heavy_cnt);
+            std::vector<uint32_t> light_vec =
+                generate_uniform_random_number(0, light_siz, light_cnt);
+            for (auto val : heavy_vec)
+            {
+                if (val == 0)
+                    continue;
+                NS_LOG_UNCOND("debug keyset size " << val);
+                keyset.push_back(val);
+            }
+            for (auto val : light_vec)
+            {
+                if (val == 0)
+                    continue;
+                NS_LOG_UNCOND("debug keyset size " << val);
+                keyset.push_back(val);
+            }
+            break;
+        }
+        case LIGHT: {
+            std::vector<uint32_t> random_vec = generate_uniform_random_number(0, req_siz, ks_num);
+            for (auto val : random_vec)
+            {
+                if (val == 0)
+                    continue;
+                NS_LOG_UNCOND("debug keyset size " << val);
+                keyset.push_back(val);
+            }
+            break;
+        }
+        }
+
+        // Count the total size and total number of keysets
+        ks_num = keyset.size();
+        tot_key_num += std::accumulate(keyset.begin(), keyset.end(), 0);
+        tot_ks_num += keyset.size();
+        uint32_t bottleneck_keyset =
+            *std::max_element(keyset.begin(), keyset.end()); // bottleneck keyset size
+        std::unordered_map<uint32_t, bool> is_add;
+        for (uint32_t ks_siz : keyset)
+        {
+            // The server that this keyset data packet was sent to
+            uint32_t server_id = generate_dst_server(is_add, server_rng);
+            // Get IPv4 address from server id
+            Ptr<Node> serverNode = serverNodes.Get(server_id);
+            std::stringstream ss;
+            ss << serverNode->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
+
+            // Build request table entry
+            RequestTableEntry entry;
+            entry.id = 0;   // Initialize it later
+            entry.st = 0.0; // Initialize it later
+            entry.src_client = client_id;
+            entry.dst_server = server_id;
+            entry.dst_ip = ss.str();
+            entry.dst_port = server_port;
+            entry.req_id = req_id;
+            entry.ks_siz = ks_siz;
+            entry.bottleneck_ks_size = bottleneck_keyset;
+
+            // Record this entry to the temporary vector
+            vec.push_back(entry);
+        }
+
+        key_num -= req_siz;
+        ++tot_request_num; // Count the total number of requests
+        req_id++;
+    }
+
+    // Initialize send time
+    // double req_mean = 1.0 * tot_key_num / tot_ks_num;
+    double req_mean = 1.0 * tot_key_num / tot_request_num;
+    double send_time = 2;
+    uint32_t ratio_tot = server_rate_ratio.r1 + server_rate_ratio.r2 + server_rate_ratio.r3;
+    double server_rate =
+        1.0 * (server_rate_ratio.r1 + server_rate_ratio.r2 * 2 + server_rate_ratio.r3 * 3) /
+        ratio_tot;
+    double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
+    std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
+
+    Ptr<ExponentialRandomVariable> send_time_rng = CreateObject<ExponentialRandomVariable>();
+    send_time_rng->SetAttribute("Mean", DoubleValue(t_mean));
+
+    for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
+    {
+        double r = 0;
+        while (true)
+        {
+            r = send_time_rng->GetValue();
+            if (r != 0)
+                break;
+        }
+        send_time += Seconds(r).GetSeconds();
+        send_time_mp[req_id] = send_time;
+    }
+
+    // Fill send time for each request table entry,
+    // and insert each entry to the request table
+    for (auto& entry : vec)
+    {
+        entry.st = send_time_mp[entry.req_id];
+        req_table[entry.src_client].push_back(entry);
+    }
+
+    // Sort vector by send time
+    auto cmp = [](RequestTableEntry& entry1, RequestTableEntry& entry2) -> bool {
+        return entry1.st < entry2.st;
+    };
+    for (auto& [client_id, vec] : req_table)
+        std::sort(vec.begin(), vec.end(), cmp);
+
+    // Initialize keyset ID
+    uint32_t id_cnt = 0;
+    for (auto& [client_id, vec] : req_table)
+        for (auto& entry : vec)
+            entry.id = ++id_cnt;
 }
 
 ServerRateRatio
@@ -640,7 +661,11 @@ main(int argc, char* argv[])
     }
     // Generate request table
     NS_LOG_UNCOND("===== Prebuild request table =====");
-    init_request_table(serverNodes);
+    if (req_table_from_file)
+        init_request_table_from_file();
+    else
+        init_request_table(serverNodes);
+    print_request_table();
     // Install client application
     ClientHelper clientHelper(req_table, algorithm);
     clientHelper.Install(clientNodes);

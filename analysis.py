@@ -53,6 +53,9 @@ tot_key_num: int = 0
 tot_request_num: int = 0
 tot_ks_num: int = 0
 
+req_siz: dict[int, int] = {}
+dst_server_cnt: dict[int, int] = {}
+
 def print_result():
     print("Request: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(req_avg_response_time, req_p95, req_p99))
     print("Keyset: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(ks_avg_response_time, ks_p95, ks_p99))
@@ -61,19 +64,34 @@ def print_result():
         print("Keyset wait in controller: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms, wait_cnt = {}" \
               .format(ks_avg_ctrl_wait_time, ks_ctrl_wait_time_p95, ks_ctrl_wait_time_p99, ks_ctrl_wait_cnt))
         # Draw keyset wait time in controller
-        plt.rcParams['font.sans-serif']=['SimHei']
-        plt.rcParams["figure.figsize"] = [6.50, 3.50]
-        plt.rcParams["figure.autolayout"] = True
         ks_ctrl_wait_time_sorted = sorted(list(ks_ctrl_wait_time.values()))
         mx = int(ks_ctrl_wait_time_sorted[len(ks_ctrl_wait_time_sorted) - 1])
         count, bins_count = np.histogram(ks_ctrl_wait_time_sorted, bins=mx if mx != 0 else 1)
         pdf = count / sum(count)
         cdf = np.cumsum(pdf)
-        plt.xlabel("比例")
-        plt.ylabel("时间(ms)")
-        plt.plot(cdf, bins_count[1:], label="控制器等待时间")
+        plt.xlabel("Ratio")
+        plt.ylabel("Time(ms)")
+        plt.plot(cdf, bins_count[1:], label="Wait time in controller")
         plt.legend()
-        plt.show()
+        plt.savefig('sdn_kvs.png')
+        plt.clf()
+    
+    req_siz_list = list(req_siz.values())
+    plt.hist(req_siz_list, bins = list(range(min(req_siz_list), max(req_siz_list) + 1, 1)))
+    plt.xlabel("Request size")
+    plt.ylabel("Count")
+    plt.title("req_siz") 
+    plt.savefig('req_siz.png')
+    plt.clf()
+
+    server_num = len(dst_server_cnt)
+    dst_server_x = list(dst_server_cnt.keys())
+    dst_server_y = list(dst_server_cnt.values())
+    plt.bar(dst_server_x, dst_server_y)
+    plt.xlabel("Server")
+    plt.ylabel("Count")
+    plt.title("dst_server") 
+    plt.savefig('dst_server.png')
 
 def analyze():
     global req_avg_response_time
@@ -123,16 +141,26 @@ def parse_line(line: str):
     global tot_key_num
     global tot_request_num
     global tot_ks_num
+    global req_siz
+    global dst_server_cnt
     match = pattern1.search(line)
     if match:
         id = int(match.group(1))
         st = float(match.group(2)) * 1000
+        dst_server = int(match.group(4))
         req_id = int(match.group(6))
+        ks_siz = int(match.group(7))
         req_st_send_time[req_id] = st
         ks_st_send_time[id] = st
         ctrl_recv_time[id] = 0
         ctrl_send_time[id] = 0
         req_recv_time[req_id] = 0
+        if dst_server not in dst_server_cnt:
+            dst_server_cnt[dst_server] = 0
+        dst_server_cnt[dst_server] += 1
+        if req_id not in req_siz:
+            req_siz[req_id] = 0
+        req_siz[req_id] += ks_siz
         return
     match = pattern2.search(line)
     if match:
