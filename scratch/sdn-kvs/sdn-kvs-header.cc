@@ -93,6 +93,18 @@ SdnKvsHeader::GetHeavy() const
 }
 
 void
+SdnKvsHeader::SetServerTqs(uint32_t server_tqs)
+{
+    m_server_tqs = server_tqs;
+}
+
+uint32_t
+SdnKvsHeader::GetServerTqs() const
+{
+    return m_server_tqs;
+}
+
+void
 SdnKvsHeader::SetPriority(uint32_t priority)
 {
     m_priority = priority;
@@ -123,14 +135,14 @@ SdnKvsHeader::Print(std::ostream& os) const
 {
     os << "(id=" << m_id << ", req_id=" << m_req_id << ", ks_siz=" << m_ks_siz
        << ", bottleneck_ks_siz=" << m_bottleneck_ks_siz << ", queue_siz=" << m_queue_siz
-       << ", server_rate=" << m_server_rate << ", heavy=" << m_heavy << ", priority=" << m_priority
-       << ")";
+       << ", server_rate=" << m_server_rate << ", heavy=" << m_heavy
+       << ", server_tqs=" << m_server_tqs << ", priority=" << m_priority << ")";
 }
 
 uint32_t
 SdnKvsHeader::GetSerializedSize() const
 {
-    return 30U; // 30 bytes
+    return 34U; // 34 bytes
 }
 
 void
@@ -144,6 +156,7 @@ SdnKvsHeader::Serialize(Buffer::Iterator start) const
     start.WriteHtonU32(m_queue_siz);
     start.WriteHtonU32(m_server_rate);
     start.WriteHtonU16(m_heavy);
+    start.WriteHtonU32(m_server_tqs);
     start.WriteHtonU32(m_priority);
 }
 
@@ -158,6 +171,7 @@ SdnKvsHeader::Deserialize(Buffer::Iterator start)
     m_queue_siz = start.ReadNtohU32();
     m_server_rate = start.ReadNtohU32();
     m_heavy = start.ReadNtohU16();
+    m_server_tqs = start.ReadNtohU32();
     m_priority = start.ReadNtohU32();
-    return 30U;
+    return 34U;
 }

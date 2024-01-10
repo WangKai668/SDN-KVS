@@ -62,6 +62,7 @@ Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
         context.lastScheduleTime = Simulator::Now();
         context.queue_size = 0;
         context.server_rate = 0;
+        context.server_tqs = 0;
         context.schedulePackets = std::vector<SchedulePacket>();
         context.undoFlowEvents[1] = EventId();
         context.undoFlowEvents[2] = EventId();
@@ -213,6 +214,12 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 std::vector<uint32_t>
 Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
 {
+    // Log the controller queue size
+    uint32_t ctrl_queue_siz = 0;
+    for (const auto& [server_id, ctx] : m_scheduleContexts)
+        for (const auto& pkt : ctx.schedulePackets)
+            ctrl_queue_siz += pkt.sdnKvsHeader.GetKsSiz();
+    // Print log
     uint32_t tot_key_num = 0;
     std::stringstream ss;
     ss << "[";
@@ -223,9 +230,9 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         tot_key_num += req.key_num;
     }
     ss << "]";
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Do BP-LPT for array(size=" << scheduleRequests.size()
-                                << ", tot_key_num=" << tot_key_num << "): " << ss.str());
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Do BP-LPT for array(size="
+                                << scheduleRequests.size() << ", tot_key_num=" << tot_key_num
+                                << ", ctrl_queue_siz=" << ctrl_queue_siz << "): " << ss.str());
 
     std::vector<uint32_t> ret;
     std::set<uint32_t> req_set;
@@ -307,10 +314,16 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
                        Ptr<const RemoteSwitch> swtch,
                        uint32_t xid)
 {
+    // Log the controller queue size
+    uint32_t tot_key_num = 0;
+    for (const auto& [server_id, ctx] : m_scheduleContexts)
+        for (const auto& pkt : ctx.schedulePackets)
+            tot_key_num += pkt.sdnKvsHeader.GetKsSiz();
+    // Print log
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
     NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet"
-                                << ss.str());
+                                << ss.str() << "(ctrl_queue_siz=" << tot_key_num << ")");
     // Get server IP address
     ss.str("");
     Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
@@ -397,9 +410,14 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
 
     std::map<uint32_t, uint32_t> dt_base; // Delta send time base count. Map<server id, base count>
+    // Total ks_siz for specific server. Used for set sending time. Map<server id, total ks_siz>
+    std::map<uint32_t, uint32_t> cur_ks_siz;
+    // Last send time for specific server. Used for set sending time. Map<server id, last send time>
+    std::map<uint32_t, Time> lst_dt;
+
     // dt = queue_size / server_rate + base_value * base_count. Here base_value=0.005ms
     for (uint32_t i = 0; i < m_serverNodes.size(); i++)
-        dt_base[i] = 0;
+        dt_base[i] = 0, cur_ks_siz[i] = 0;
     for (const auto& req_id : sortedReuests)
     {
         for (const auto& pkt : pktSnapshot[req_id])
@@ -408,10 +426,28 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             ss.str("");
             pkt->sdnKvsHeader.Print(ss);
 
+            Time dt;
             ScheduleContext& ctx = m_scheduleContexts[pkt->dstServerId];
-            Time dt = Seconds((1.0 * std::max(ctx.queue_size-5,1U)) / (1000.0 * ctx.server_rate) +
-                              0.0005 * dt_base[pkt->dstServerId]);
+            if (cur_ks_siz[pkt->dstServerId] > ctx.server_tqs)
+            {
+                dt_base[pkt->dstServerId] = 0;
+                Time ddt = Seconds((cur_ks_siz[pkt->dstServerId] - ctx.server_tqs) /
+                                       (1000.0 * ctx.server_rate) +
+                                   0.000005 * dt_base[pkt->dstServerId]);
+                dt = lst_dt[pkt->dstServerId] + ddt;
+                cur_ks_siz[pkt->dstServerId] = ctx.server_tqs + pkt->sdnKvsHeader.GetKsSiz();
+            }
+            else
+            {
+                dt = Seconds(std::max(int32_t(ctx.queue_size) - int32_t(ctx.server_tqs), 0) /
+                                 (1000.0 * ctx.server_rate) +
+                             0.000005 * dt_base[pkt->dstServerId]);
+                cur_ks_siz[pkt->dstServerId] += pkt->sdnKvsHeader.GetKsSiz();
+            }
+
             dt_base[pkt->dstServerId] += 1;
+            lst_dt[pkt->dstServerId] = dt;
+
             // Remove send event set before
             if (pkt->eventId.IsRunning())
             {
@@ -456,6 +492,7 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         ScheduleContext& context = m_scheduleContexts[server_id];
         context.queue_size = sdnKvsHeader.GetQueueSiz();
         context.server_rate = sdnKvsHeader.GetServerRate();
+        context.server_tqs = sdnKvsHeader.GetServerTqs();
         context.lastScheduleTime = Simulator::Now();
         context.is_heavy = true;
 
@@ -521,18 +558,25 @@ Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
 void
 Controller::RemovePacketAndForward(SchedulePacket pkt)
 {
-    // Print log
-    std::stringstream ss;
-    pkt.sdnKvsHeader.Print(ss);
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Forward packet(pkt_id=" << pkt.id << ")" << ss.str()
-                                << " to the server " << pkt.dstServerId);
     // Remove packet from schdule list
     ScheduleContext& ctx = m_scheduleContexts[pkt.dstServerId];
     auto cond = [&pkt](SchedulePacket& packet) { return packet.id == pkt.id; };
     auto it = std::find_if(ctx.schedulePackets.begin(), ctx.schedulePackets.end(), cond);
     if (it != ctx.schedulePackets.end())
         ctx.schedulePackets.erase(it);
+
+    // Log the controller queue size
+    uint32_t tot_key_num = 0;
+    for (const auto& [server_id, ctx] : m_scheduleContexts)
+        for (const auto& pkt : ctx.schedulePackets)
+            tot_key_num += pkt.sdnKvsHeader.GetKsSiz();
+    // Print log
+    std::stringstream ss;
+    pkt.sdnKvsHeader.Print(ss);
+    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Forward packet(pkt_id="
+                                << pkt.id << ")" << ss.str() << " to the server " << pkt.dstServerId
+                                << " (ctrl_queue_siz=" << tot_key_num << ")");
+
     // Forward packet to the server
     ForwardPacket(pkt.msg, pkt.swtch, pkt.xid);
     // Free message after forwarding packet

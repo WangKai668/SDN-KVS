@@ -97,6 +97,17 @@ class SdnKvsHeader : public Header
     uint32_t GetBottleneckKsSiz() const;
 
     /**
+     * Set server TQS.
+     * \param tqs Server TQS.
+     */
+    void SetServerTqs(uint32_t server_tqs);
+    /**
+     * Get server TQS.
+     * \return Server TQS.
+     */
+    uint32_t GetServerTqs() const;
+
+    /**
      * Set priority.
      * \param priority Priority.
      */
@@ -126,6 +137,7 @@ class SdnKvsHeader : public Header
     uint32_t m_queue_siz;         //!< Server queue size
     uint32_t m_server_rate;       //!< Server handle rate
     uint16_t m_heavy;             //!< Server heavy status
+    uint32_t m_server_tqs;        //!< Server TQS
     /**
      * Request priority. Used by DAS algorithm.
      * It is equal to m_ks_siz if DAS algorithm is not enabled.

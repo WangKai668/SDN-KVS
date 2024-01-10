@@ -5,14 +5,15 @@ import numpy as np
 from matplotlib import pyplot as plt
 
 pattern1 = re.compile(r"\[[0-9]+\] \(id=(\d+), st=(.*?), src_client=(\d+), dst_server=(\d+), dst_ip=(\d+\.\d+\.\d+\.\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_size=(\d+)\)")
-pattern2 = re.compile(r"\[Client\]\[\+(.*?)s\] Client (\d+) Sent SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) to server (\d+)\(ip=(\d+\.\d+\.\d+\.\d+), port=(\d+)\)")
-pattern3 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
-pattern4 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) sent response packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) to (\d+\.\d+\.\d+\.\d+) port (\d+)")
-pattern5 = re.compile(r"\[Controller\]\[\+(.*?)s\] Schedule client packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\)")
-pattern6 = re.compile(r"\[Controller\]\[\+(.*?)s\] Forward packet\(pkt_id=(\d+)\)\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) to the server (\d+)")
-pattern7 = re.compile(r"\[Client\]\[\+(.*?)s\] Received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
+pattern2 = re.compile(r"\[Client\]\[\+(.*?)s\] Client (\d+) Sent SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) to server (\d+)\(ip=(\d+\.\d+\.\d+\.\d+), port=(\d+)\)")
+pattern3 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
+pattern4 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) sent response packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) to (\d+\.\d+\.\d+\.\d+) port (\d+)")
+pattern5 = re.compile(r"\[Controller\]\[\+(.*?)s\] Schedule client packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\)\(ctrl_queue_siz=(\d+)\)")
+pattern6 = re.compile(r"\[Controller\]\[\+(.*?)s\] Forward packet\(pkt_id=(\d+)\)\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) to the server (\d+) \(ctrl_queue_siz=(\d+)\)")
+pattern7 = re.compile(r"\[Client\]\[\+(.*?)s\] Received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
 pattern8 = re.compile(r"tot_key_num = (\d+), tot_request_num = (\d+), tot_ks_num = (\d+)")
 pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
+pattern10 = re.compile(r"\[Controller\]\[\+(.*?)s\] Do BP-LPT for array\(size=(.*?), tot_key_num=(.*?), ctrl_queue_siz=(.*?)\): \[")
 
 algorithm: str
 
@@ -56,6 +57,9 @@ tot_ks_num: int = 0
 req_siz: dict[int, int] = {}
 dst_server_cnt: dict[int, int] = {}
 
+ctrl_queue_size = {}
+all_server_queue_size = {}
+
 def print_result():
     print("Request: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(req_avg_response_time, req_p95, req_p99))
     print("Keyset: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(ks_avg_response_time, ks_p95, ks_p99))
@@ -92,6 +96,17 @@ def print_result():
     plt.ylabel("Count")
     plt.title("dst_server") 
     plt.savefig('dst_server.png')
+    plt.clf()
+
+    for server_id in all_server_queue_size.keys():
+        plt.plot(all_server_queue_size[server_id].keys(), all_server_queue_size[server_id].values(), alpha=0.5, label="server {}".format(server_id))
+    plt.plot(ctrl_queue_size.keys(), ctrl_queue_size.values(), label="ctrl")
+    plt.title('queue size in server for {}'.format(algorithm))
+    plt.xlabel('time(ms)')
+    plt.ylabel('queue size')
+    plt.legend()
+    plt.savefig('queue_len.png')
+    plt.clf()
 
 def analyze():
     global req_avg_response_time
@@ -174,16 +189,26 @@ def parse_line(line: str):
     match = pattern3.search(line)
     if match:
         time = float(match.group(1)) * 1000
+        server_id = int(match.group(2))
+        queue_siz = int(match.group(3))
         id = int(match.group(5))
-        server_recv_time[id] = time
+        server_recv_time[server_id] = time
         server_recv_cnt += 1
+        if server_id not in all_server_queue_size.keys():
+            all_server_queue_size[server_id] = {}
+        all_server_queue_size[server_id][time] = queue_siz
         return
     match = pattern4.search(line)
     if match:
         time = float(match.group(1)) * 1000
+        server_id = int(match.group(2))
+        queue_siz = int(match.group(3))
         id = int(match.group(5))
         server_send_time[id] = time
         server_send_cnt += 1
+        if server_id not in all_server_queue_size.keys():
+            all_server_queue_size[server_id] = {}
+        all_server_queue_size[server_id][time] = queue_siz
         return
     match = pattern5.search(line)
     if match:
@@ -191,6 +216,7 @@ def parse_line(line: str):
         id = int(match.group(2))
         ctrl_recv_time[id] = time
         ctrl_recv_cnt += 1
+        ctrl_queue_size[time] = int(match.group(11))
         return
     match = pattern6.search(line)
     if match:
@@ -198,6 +224,7 @@ def parse_line(line: str):
         id = int(match.group(3))
         ctrl_send_time[id] = time
         ctrl_send_cnt += 1
+        ctrl_queue_size[time] = int(match.group(13))
         return
     match = pattern7.search(line)
     if match:
@@ -217,6 +244,11 @@ def parse_line(line: str):
     match = pattern9.search(line)
     if match:
         algorithm = match.group(1)
+        return
+    match = pattern10.search(line)
+    if match:
+        time = float(match.group(1)) * 1000
+        ctrl_queue_size[time] = int(match.group(4))
         return
 
 def parse(file_path: str):

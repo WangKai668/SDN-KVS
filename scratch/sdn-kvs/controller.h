@@ -84,6 +84,7 @@ class Controller : public OFSwitch13Controller
                                // scheduled yet. Set after each scheduling.
         uint32_t queue_size;   // Current server queue size. Computed in each scheduling.
         uint32_t server_rate;  // Server handle rate. (Number of keys processed per millisecond)
+        uint32_t server_tqs;   // Server TQS.
         // Waiting for the sending packets list.
         // It means the server is not overloaded now if empty.
         std::vector<SchedulePacket> schedulePackets;

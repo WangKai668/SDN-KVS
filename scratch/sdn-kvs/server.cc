@@ -277,11 +277,13 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
         hdr.SetHeavy(1U);
         hdr.SetQueueSiz(m_queue_size);
         hdr.SetServerRate(m_server_rate);
+        hdr.SetServerTqs(m_tqs);
         pkt->AddHeader(hdr);
         socket->SendTo(pkt, 0, from);
     }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
+    sdnKvsHeader.SetServerTqs(m_tqs);
 
     packet->AddHeader(sdnKvsHeader);
 }
@@ -340,6 +342,7 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
     }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
+    sdnKvsHeader.SetServerTqs(m_tqs);
     packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
