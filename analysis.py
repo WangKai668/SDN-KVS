@@ -157,7 +157,7 @@ def parse_line(line: str):
         req_recv_time[req_id] = 0
         if dst_server not in dst_server_cnt:
             dst_server_cnt[dst_server] = 0
-        dst_server_cnt[dst_server] += 1
+        dst_server_cnt[dst_server] += ks_siz
         if req_id not in req_siz:
             req_siz[req_id] = 0
         req_siz[req_id] += ks_siz

@@ -209,9 +209,7 @@ init_request_table(NodeContainer& serverNodes)
     req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
     req_siz_rng->SetAttribute("Bound", DoubleValue(1000));
 
-    Ptr<UniformRandomVariable> ks_num_rng = CreateObject<UniformRandomVariable>();
-    ks_num_rng->SetAttribute("Min", DoubleValue(1));
-    ks_num_rng->SetAttribute("Max", DoubleValue(server_num));
+    std::poisson_distribution<> ks_num_rng(server_num / 2.0);
 
     Ptr<RandomVariableStream> server_rng;
     if (ifZipfian)
@@ -242,7 +240,11 @@ init_request_table(NodeContainer& serverNodes)
         NS_LOG_UNCOND("debug req size " << req_siz);
         req_siz = req_siz > key_num ? key_num : req_siz;
         // The upper bound of the keyset number of this request
-        uint32_t ks_num = server_num;
+        uint32_t ks_num = ks_num_rng(gen);
+        if (ks_num < 2)
+            ks_num = 2;
+        if (ks_num > server_num)
+            ks_num = server_num;
 
         // Generate keyset for request. The generated keyset's size and number will not be
         // greater than the upper bound.
