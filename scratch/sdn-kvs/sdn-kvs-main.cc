@@ -23,7 +23,6 @@ NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
  */
 SchedulingType algorithm = SchedulingStrategy::FIFO;
 bool debug = false;               // Enable DEBUG log
-bool mute = false;                // Only print client application logs for analysis
 bool ifZipfian = true;            // Whether there is a hotspot server
 bool req_table_from_file = false; // Whether get request table from request_table.txt file
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
@@ -80,7 +79,7 @@ generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, Ptr<RandomVariab
 uint32_t
 generate_request_size()
 {
-    uint32_t x;
+    uint32_t x = 0;
     switch (req_size_distribution_type)
     {
     case POSSION: {
@@ -101,19 +100,17 @@ generate_request_size()
 void
 print_request_table()
 {
-    NS_LOG_UNCOND("tot_key_num = " << tot_key_num << ", tot_request_num = " << tot_request_num
-                                   << ", tot_ks_num = " << tot_ks_num);
+    std::cout << "tot_key_num = " << tot_key_num << ", tot_request_num = " << tot_request_num
+              << ", tot_ks_num = " << tot_ks_num << std::endl;
     for (const auto& [client_id, entry_vec] : req_table)
     {
         for (const auto& entry : entry_vec)
         {
-            std::stringstream ss;
-            ss << "[" << client_id << "] (id=" << entry.id << ", st=" << entry.st
-               << ", src_client=" << entry.src_client << ", dst_server=" << entry.dst_server
-               << ", dst_ip=" << entry.dst_ip << ", req_id=" << entry.req_id
-               << ", ks_siz=" << entry.ks_siz << ", bottleneck_ks_size=" << entry.bottleneck_ks_size
-               << ")";
-            NS_LOG_UNCOND(ss.str());
+            std::cout << "[" << client_id << "] (id=" << entry.id << ", st=" << entry.st
+                      << ", src_client=" << entry.src_client << ", dst_server=" << entry.dst_server
+                      << ", dst_ip=" << entry.dst_ip << ", req_id=" << entry.req_id
+                      << ", ks_siz=" << entry.ks_siz
+                      << ", bottleneck_ks_size=" << entry.bottleneck_ks_size << ")" << std::endl;
         }
     }
 }
@@ -188,7 +185,7 @@ init_request_table_from_file()
     }
     else
     {
-        NS_LOG_UNCOND("Cannot open file");
+        std::cout << "Cannot open file" << std::endl;
     }
 }
 
@@ -237,7 +234,7 @@ init_request_table(NodeContainer& serverNodes)
             req_table[client_id] = std::vector<RequestTableEntry>();
         // The upper bound of request size
         uint32_t req_siz = generate_request_size();
-        NS_LOG_UNCOND("debug req size " << req_siz);
+        // std::cout << "debug req size " << req_siz << std::endl;
         req_siz = req_siz > key_num ? key_num : req_siz;
         // The upper bound of the keyset number of this request
         uint32_t ks_num = ks_num_rng(gen);
@@ -263,14 +260,14 @@ init_request_table(NodeContainer& serverNodes)
             {
                 if (val == 0)
                     continue;
-                NS_LOG_UNCOND("debug keyset size " << val);
+                // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
             }
             for (auto val : light_vec)
             {
                 if (val == 0)
                     continue;
-                NS_LOG_UNCOND("debug keyset size " << val);
+                // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
             }
             break;
@@ -281,7 +278,7 @@ init_request_table(NodeContainer& serverNodes)
             {
                 if (val == 0)
                     continue;
-                NS_LOG_UNCOND("debug keyset size " << val);
+                // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
             }
             break;
@@ -394,7 +391,8 @@ parse_ratio(std::string ratio_str)
     }
     catch (const std::exception& e)
     {
-        NS_LOG_UNCOND("Failed to parse server rate ratio, use default value(Default: 1:0:0)");
+        std::cout << "Failed to parse server rate ratio, use default value(Default: 1:0:0)"
+                  << std::endl;
         ratio_vec.clear();
         ratio_vec.push_back(1);
         ratio_vec.push_back(0);
@@ -437,9 +435,10 @@ parse_ratio(std::string ratio_str)
     bool flag3 = (ans.r3 == 0) ? true : ((server_num * ans.r3) % ratio_tot) == 0;
     if (!(flag1 && flag2 && flag3))
     {
-        NS_LOG_UNCOND(
-            "The server cannot allocate rates exactly proportionally. Fall back to default "
-            "proportions.(Default: 1:0:0)");
+        std::cout
+            << "The server cannot allocate rates exactly proportionally. Fall back to default "
+               "proportions.(Default: 1:0:0)"
+            << std::endl;
         ans.r1 = 1, ans.r2 = 0, ans.r3 = 0;
     }
     return ans;
@@ -457,7 +456,6 @@ init_parameter(int argc, char* argv[])
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
                  algorithm_index);
     cmd.AddValue("debug", "Enable DEBUG log", debug);
-    cmd.AddValue("mute", "Only print client application logs for analysis", mute);
     cmd.AddValue("ifZipfian", "Whether there is a hotspot server", ifZipfian);
     cmd.AddValue("distribution_type",
                  "The distribution type for generating key(0: POSSION, 1: PARETO)",
@@ -521,21 +519,20 @@ init_parameter(int argc, char* argv[])
     server_rate_ratio = parse_ratio(server_rate_ratio_str);
 
     // Print the parameter
-    NS_LOG_UNCOND("===== Parameter configure =====");
-    NS_LOG_UNCOND(" - algorithm = " << algorithm);
-    NS_LOG_UNCOND(" - debug = " << debug);
-    NS_LOG_UNCOND(" - mute = " << mute);
-    NS_LOG_UNCOND(" - ifZipfian = " << ifZipfian);
-    NS_LOG_UNCOND(" - distribution_type = " << req_size_distribution_type);
-    NS_LOG_UNCOND(" - keyset_size_type = " << keyset_size_type);
-    NS_LOG_UNCOND(" - uti = " << uti);
-    NS_LOG_UNCOND(" - simTime = " << simTime);
-    NS_LOG_UNCOND(" - server_rate_ratio = " << server_rate_ratio);
-    NS_LOG_UNCOND(" - server_tqs = " << server_tqs);
-    NS_LOG_UNCOND(" - client_num = " << client_num);
-    NS_LOG_UNCOND(" - server_num = " << server_num);
-    NS_LOG_UNCOND(" - key_num = " << key_num);
-    NS_LOG_UNCOND(" - request_size = " << request_size);
+    std::cout << "===== Parameter configure =====" << std::endl;
+    std::cout << " - algorithm = " << algorithm << std::endl;
+    std::cout << " - debug = " << debug << std::endl;
+    std::cout << " - ifZipfian = " << ifZipfian << std::endl;
+    std::cout << " - distribution_type = " << req_size_distribution_type << std::endl;
+    std::cout << " - keyset_size_type = " << keyset_size_type << std::endl;
+    std::cout << " - uti = " << uti << std::endl;
+    std::cout << " - simTime = " << simTime << std::endl;
+    std::cout << " - server_rate_ratio = " << server_rate_ratio << std::endl;
+    std::cout << " - server_tqs = " << server_tqs << std::endl;
+    std::cout << " - client_num = " << client_num << std::endl;
+    std::cout << " - server_num = " << server_num << std::endl;
+    std::cout << " - key_num = " << key_num << std::endl;
+    std::cout << " - request_size = " << request_size << std::endl;
 }
 
 int
@@ -547,24 +544,6 @@ main(int argc, char* argv[])
     Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(10000));
     Config::SetDefault("ns3::ArpCache::WaitReplyTimeout", TimeValue(Seconds(10)));
     Config::SetDefault("ns3::ArpCache::MaxRetries", UintegerValue(300));
-
-    if (debug)
-    {
-        // DEBUG LOG
-        LogComponentEnable("Controller", LOG_LEVEL_ALL);
-        LogComponentEnable("ServerApplication", LOG_LEVEL_ALL);
-        LogComponentEnable("ClientApplication", LOG_LEVEL_ALL);
-    }
-    else if (mute)
-    {
-        LogComponentEnable("ClientApplication", LOG_LEVEL_INFO);
-    }
-    else
-    {
-        LogComponentEnable("Controller", LOG_LEVEL_INFO);
-        LogComponentEnable("ServerApplication", LOG_LEVEL_INFO);
-        LogComponentEnable("ClientApplication", LOG_LEVEL_INFO);
-    }
 
     // Enable checksum computations (required by OFSwitch13 module)
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
@@ -583,6 +562,7 @@ main(int argc, char* argv[])
     // Whether SDN-KVS algorithm is enabled on the controller
     bool enable_sdn_kvs = algorithm.controller_algorithm == ControllerSchedulingType::SDN_KVS;
     controller->SetSdnKvsEnabled(enable_sdn_kvs);
+    controller->SetDebug(debug);
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
     csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Gbps")));
@@ -645,7 +625,7 @@ main(int argc, char* argv[])
     ServerHelper serverHelper(server_port, server_rate_ratio, server_tqs, algorithm);
     ApplicationContainer server_apps = serverHelper.Install(serverNodes);
     // Print server information log
-    NS_LOG_UNCOND("==== Server information ====");
+    std::cout << "==== Server information ====" << std::endl;
     for (auto i = server_apps.Begin(); i != server_apps.End(); ++i)
     {
         Ptr<Application> app = *i;
@@ -656,20 +636,20 @@ main(int argc, char* argv[])
         app->GetAttribute("TQS", tqs);
         app->GetAttribute("SrptEnabled", srpt_enabled);
         app->GetAttribute("SbfEnabled", sbf_enabled);
-        NS_LOG_UNCOND("[" << id.Get() << "] (server_id=" << id.Get()
-                          << ", server_rate=" << server_rate.Get() << ", tqs=" << tqs.Get()
-                          << ", srpt_enabled=" << srpt_enabled.Get()
-                          << ", sbf_enabled=" << sbf_enabled.Get() << ")");
+        std::cout << "[" << id.Get() << "] (server_id=" << id.Get()
+                  << ", server_rate=" << server_rate.Get() << ", tqs=" << tqs.Get()
+                  << ", srpt_enabled=" << srpt_enabled.Get()
+                  << ", sbf_enabled=" << sbf_enabled.Get() << ")" << std::endl;
     }
     // Generate request table
-    NS_LOG_UNCOND("===== Prebuild request table =====");
+    std::cout << "===== Prebuild request table =====" << std::endl;
     if (req_table_from_file)
         init_request_table_from_file();
     else
         init_request_table(serverNodes);
     print_request_table();
     // Install client application
-    ClientHelper clientHelper(req_table, algorithm);
+    ClientHelper clientHelper(req_table, algorithm, debug);
     clientHelper.Install(clientNodes);
 
     // Run the simulation

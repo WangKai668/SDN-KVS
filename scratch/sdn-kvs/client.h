@@ -37,6 +37,8 @@ class Client : public Application
 
     void SetClientId(uint32_t client_id);
 
+    void SetDebug(bool debug);
+
   protected:
     void DoDispose() override;
 
@@ -159,6 +161,7 @@ class Client : public Application
      */
     void ScheduleTransmit();
 
+    bool m_debug;                                  //!< Enable DEBUG log
     uint32_t m_client_id;                          //!< Client ID
     std::vector<RequestTableEntry> m_request_list; //!< Request list for this client
     bool m_sbf_enabled; //!< Whether SBF algorithm is enabled on the client

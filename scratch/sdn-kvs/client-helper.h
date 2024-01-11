@@ -28,9 +28,11 @@ class ClientHelper
      *
      * \param req_table Request table
      * \param algorithm The scheduling algorithm running on the client
+     * \param debug Enable debug log
      */
     ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table,
-                 SchedulingType algorithm);
+                 SchedulingType algorithm,
+                 bool debug);
 
     /**
      * Record an attribute to be set in each Application after it is is created.
@@ -64,6 +66,7 @@ class ClientHelper
     ObjectFactory m_factory; //!< Object factory.
     Ptr<Client> m_client;    //!< The last created client application
     std::map<uint32_t, std::vector<RequestTableEntry>> m_req_table; //!< Request table
+    bool m_debug = false;                                           //!< Enable DEBUG log
 };
 
 #endif

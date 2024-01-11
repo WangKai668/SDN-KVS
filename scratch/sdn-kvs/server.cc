@@ -187,21 +187,21 @@ Server::HandleRead(Ptr<Socket> socket)
         sdnKvsHeader.Print(ss);
         if (InetSocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size
-                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                    << ") received SDN-KVS packet" << ss.str() << " from "
-                                    << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
-                                    << InetSocketAddress::ConvertFrom(from).GetPort());
+            std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                      << "(queue_siz=" << m_queue_size
+                      << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                      << ") received SDN-KVS packet" << ss.str() << " from "
+                      << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
+                      << InetSocketAddress::ConvertFrom(from).GetPort() << std::endl;
         }
         else if (Inet6SocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size
-                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                    << ") received SDN-KVS packet" << ss.str() << " from "
-                                    << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
-                                    << Inet6SocketAddress::ConvertFrom(from).GetPort());
+            std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                      << "(queue_siz=" << m_queue_size
+                      << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                      << ") received SDN-KVS packet" << ss.str() << " from "
+                      << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
+                      << Inet6SocketAddress::ConvertFrom(from).GetPort() << std::endl;
         }
 
         packet->RemoveAllPacketTags();
@@ -243,10 +243,10 @@ Server::HandleRead(Ptr<Socket> socket)
             HandlePacket(packet, socket, from);
             // Schedule send packet event
             Time dt = Seconds(1.0 * m_queue_size / (1000.0 * m_server_rate));
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << "(queue_siz=" << m_queue_size
-                                    << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                    << ") will finish handled in " << dt.As(Time::S));
+            std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                      << "(queue_siz=" << m_queue_size
+                      << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                      << ") will finish handled in " << dt.As(Time::S) << std::endl;
             Simulator::Schedule(dt, &Server::SendPacket, this, socket, packet, from);
         }
         // MODIFY END
@@ -304,14 +304,15 @@ Server::ScheduleEvent()
         m_queue_size -= ks_siz;
         // Schedule send packet event
         Time dt = Seconds(1.0 * ks_siz / (1000.0 * m_server_rate));
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size << ", update_time="
-                                << MilliSeconds(m_lst).As(Time::S) << ") begin to handle packet"
-                                << ss.str() << ", it will finish handled in " << dt.As(Time::S));
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size
-                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                << ") will finish handled in " << dt.As(Time::S));
+        std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                  << "(queue_siz=" << m_queue_size
+                  << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                  << ") begin to handle packet" << ss.str() << ", it will finish handled in "
+                  << dt.As(Time::S) << std::endl;
+        std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                  << "(queue_siz=" << m_queue_size
+                  << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+                  << ") will finish handled in " << dt.As(Time::S) << std::endl;
         m_cur_event =
             Simulator::Schedule(dt, &Server::SendPacket, this, ctx.socket, ctx.packet, ctx.from);
     }
@@ -333,10 +334,9 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
         if (m_queue_size > m_tqs)
         {
             // Server overloaded, send signal packet to SDN controller
-            NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                    << " is overloaded, set heavy field to 1"
-                                    << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs
-                                    << ")");
+            std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                      << " is overloaded, set heavy field to 1"
+                      << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs << ")" << std::endl;
             sdnKvsHeader.SetHeavy(1U);
         }
     }
@@ -347,29 +347,27 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
 
-    NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                            << "(queue_siz=" << m_queue_size
-                            << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                            << ") finishes handling the packet" << ss.str());
+    std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+              << "(queue_siz=" << m_queue_size
+              << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
+              << ") finishes handling the packet" << ss.str() << std::endl;
 
     socket->SendTo(packet, 0, from);
     if (InetSocketAddress::IsMatchingType(from))
     {
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size
-                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                << ") sent response packet" << ss.str() << " to "
-                                << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
-                                << InetSocketAddress::ConvertFrom(from).GetPort());
+        std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                  << "(queue_siz=" << m_queue_size
+                  << ", update_time=" << MilliSeconds(m_lst).As(Time::S) << ") sent response packet"
+                  << ss.str() << " to " << InetSocketAddress::ConvertFrom(from).GetIpv4()
+                  << " port " << InetSocketAddress::ConvertFrom(from).GetPort() << std::endl;
     }
     else if (Inet6SocketAddress::IsMatchingType(from))
     {
-        NS_LOG_INFO("[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
-                                << "(queue_siz=" << m_queue_size
-                                << ", update_time=" << MilliSeconds(m_lst).As(Time::S)
-                                << ") sent response packet" << ss.str() << " to "
-                                << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
-                                << Inet6SocketAddress::ConvertFrom(from).GetPort());
+        std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                  << "(queue_siz=" << m_queue_size
+                  << ", update_time=" << MilliSeconds(m_lst).As(Time::S) << ") sent response packet"
+                  << ss.str() << " to " << Inet6SocketAddress::ConvertFrom(from).GetIpv6()
+                  << " port " << Inet6SocketAddress::ConvertFrom(from).GetPort() << std::endl;
     }
 
     // Current sending event has been expired.

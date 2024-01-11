@@ -1,6 +1,7 @@
-qs=("8" "16" "32" "64" "128" "256" "512" "1024")
+qs=("0" "2" "4" "6" "8" "16" "32" "64" "128" "256" "512" "1024")
+result_file="result_tqs.log"
 
-echo "TQS变化实验"
+echo "TQS变化实验" > ${result_file}
 c=50
 s=50
 k=150000
@@ -37,25 +38,25 @@ for ((i=1; i<=4; i++)); do
     esac
     for ((a=0; a<=4; a++)); do
         case $a in
-            0) echo "[Scene $i] FIFO";;
-            1) echo "[Scene $i] SRPT";;
-            2) echo "[Scene $i] SBF";;
-            3) echo "[Scene $i] DAS";;
-            4) echo "[Scene $i] SDN-KVS";;
+            0) echo "[Scene $i] FIFO" >> ${result_file};;
+            1) echo "[Scene $i] SRPT" >> ${result_file};;
+            2) echo "[Scene $i] SBF" >> ${result_file};;
+            3) echo "[Scene $i] DAS" >> ${result_file};;
+            4) echo "[Scene $i] SDN-KVS" >> ${result_file};;
         esac
         if [ $a = 4 ]; then
             for q in ${qs[@]}; do
                 if [ $h = true ]; then
-                    bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q
+                    (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
                 else
-                    bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q
+                    (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
                 fi
             done
         else
             if [ $h = true ]; then
-                bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r
+                (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r >> ${result_file}) &>> ${result_file}
             else
-                bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r
+                (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r >> ${result_file}) &>> ${result_file}
             fi
         fi
     done

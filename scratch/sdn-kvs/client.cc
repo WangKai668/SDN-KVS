@@ -93,7 +93,8 @@ Client::ScheduleTransmit()
 {
     if (m_cur == m_request_list.size())
     {
-        NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] All requests has been sent");
+        std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] All requests has been sent"
+                  << std::endl;
         return;
     }
 
@@ -137,6 +138,12 @@ Client::SetClientId(uint32_t client_id)
 }
 
 void
+Client::SetDebug(bool debug)
+{
+    m_debug = debug;
+}
+
+void
 Client::Send(Ptr<Packet> packet, uint32_t dst_server_id, std::string dst_ip, uint16_t dst_port)
 {
     Address peerAddress(Ipv4Address(dst_ip.c_str()));
@@ -157,10 +164,10 @@ Client::Send(Ptr<Packet> packet, uint32_t dst_server_id, std::string dst_ip, uin
     packet->PeekHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
-    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Client " << m_client_id
-                            << " Sent SDN-KVS packet" << ss.str() << " to server " << dst_server_id
-                            << "(ip=" << Ipv4Address::ConvertFrom(peerAddress)
-                            << ", port=" << dst_port << ")");
+    std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] Client " << m_client_id
+              << " Sent SDN-KVS packet" << ss.str() << " to server " << dst_server_id
+              << "(ip=" << Ipv4Address::ConvertFrom(peerAddress) << ", port=" << dst_port << ")"
+              << std::endl;
     if (!m_das_enabled)
         ScheduleTransmit();
 }
@@ -261,7 +268,8 @@ Client::HandleRequestEvent(Request request, bool is_last)
         SendOne(server_id);
     }
     if (is_last)
-        NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] All requests has been sent");
+        std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] All requests has been sent"
+                  << std::endl;
 }
 
 bool
@@ -293,24 +301,31 @@ Client::SortRequests()
         ss << "(req_id=" << req.req_id << ", weight=" << req_weight[req.req_id] << ")";
     }
     ss << "]";
-    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Do DAS sort for array(size="
-                            << req_set.size() << "): " << ss.str());
+    std::cout << "[Client][" << Simulator::Now().As(Time::S)
+              << "] Do DAS sort for array(size=" << req_set.size() << "): " << ss.str()
+              << std::endl;
 
-    ss.str("");
-    ss << "[";
-    for (const auto& req : req_set)
-        ss << req;
-    ss << "]";
-    NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S)
-                             << "] [DAS Debug] Initial request set: " << ss.str());
+    if (m_debug)
+    {
+        ss.str("");
+        ss << "[";
+        for (const auto& req : req_set)
+            ss << req;
+        ss << "]";
+        std::cout << "[Client][" << Simulator::Now().As(Time::S)
+                  << "] [DAS Debug] Initial request set: " << ss.str() << std::endl;
+    }
 
     uint32_t turn_cnt = 0; // For debug
     while (!req_set.empty())
     {
         // Find server with the largest load
         uint32_t server_id = FindBottleneckServer(req_set);
-        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
-                                 << ++turn_cnt << "] Bottleneck server ID is " << server_id);
+        if (m_debug)
+        {
+            std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                      << ++turn_cnt << "] Bottleneck server ID is " << server_id << std::endl;
+        }
         ss.str("");
         ss << "[";
 
@@ -332,10 +347,13 @@ Client::SortRequests()
         Request target_req = q.top().second;
 
         ss << "]";
-        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
-                                 << turn_cnt << "] Request set: " << ss.str());
-        NS_LOG_DEBUG("[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
-                                 << turn_cnt << "] Target request = " << target_req);
+        if (m_debug)
+        {
+            std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                      << turn_cnt << "] Request set: " << ss.str() << std::endl;
+            std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] [DAS Debug] [Turn "
+                      << turn_cnt << "] Target request = " << target_req << std::endl;
+        }
 
         // Scale the weights
         double target_weight = req_weight[target_req.req_id];
@@ -358,8 +376,8 @@ Client::SortRequests()
     for (const auto& req : ans)
         ss << "(req_id=" << req.req_id << ")";
     ss << "]";
-    NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S)
-                            << "] DAS schedule completed(size=" << ans.size() << "): " << ss.str());
+    std::cout << "[Client][" << Simulator::Now().As(Time::S)
+              << "] DAS schedule completed(size=" << ans.size() << "): " << ss.str() << std::endl;
 
     m_request_vec.assign(ans.begin(), ans.end());
 }
@@ -474,17 +492,15 @@ Client::HandleRead(Ptr<Socket> socket)
         sdnKvsHeader.Print(ss);
         if (InetSocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
-                                    << ss.str() << " from "
-                                    << InetSocketAddress::ConvertFrom(from).GetIpv4() << " port "
-                                    << InetSocketAddress::ConvertFrom(from).GetPort());
+            std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
+                      << ss.str() << " from " << InetSocketAddress::ConvertFrom(from).GetIpv4()
+                      << " port " << InetSocketAddress::ConvertFrom(from).GetPort() << std::endl;
         }
         else if (Inet6SocketAddress::IsMatchingType(from))
         {
-            NS_LOG_INFO("[Client][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
-                                    << ss.str() << " from "
-                                    << Inet6SocketAddress::ConvertFrom(from).GetIpv6() << " port "
-                                    << Inet6SocketAddress::ConvertFrom(from).GetPort());
+            std::cout << "[Client][" << Simulator::Now().As(Time::S) << "] Received SDN-KVS packet"
+                      << ss.str() << " from " << Inet6SocketAddress::ConvertFrom(from).GetIpv6()
+                      << " port " << Inet6SocketAddress::ConvertFrom(from).GetPort() << std::endl;
         }
         socket->GetSockName(localAddress);
         m_rxTrace(packet);

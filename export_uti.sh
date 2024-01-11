@@ -1,8 +1,9 @@
-us=("0.7")
+us=("0.4" "0.5" "0.6" "0.7" "0.8" "0.9" "1")
+result_file="result_uti.log"
 
-echo "小规模场景"
-c=15
-s=15
+echo "小规模场景" > ${result_file}
+c=10
+s=10
 k=150000
 for ((i=1; i<=8; i++)); do
     case $i in
@@ -65,17 +66,17 @@ for ((i=1; i<=8; i++)); do
     esac
     for ((a=0; a<=4; a++)); do
         case $a in
-            0) echo "[Scene $i] FIFO";;
-            1) echo "[Scene $i] SRPT";;
-            2) echo "[Scene $i] SBF";;
-            3) echo "[Scene $i] DAS";;
-            4) echo "[Scene $i] SDN-KVS";;
+            0) echo "[Scene $i] FIFO" >> ${result_file};;
+            1) echo "[Scene $i] SRPT" >> ${result_file};;
+            2) echo "[Scene $i] SBF" >> ${result_file};;
+            3) echo "[Scene $i] DAS" >> ${result_file};;
+            4) echo "[Scene $i] SDN-KVS" >> ${result_file};;
         esac
         for u in ${us[@]}; do
             if [ $h = true ]; then
-                bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q | grep "Request"
+                (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
             else
-                bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q | grep "Request"
+                (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
             fi
         done
     done

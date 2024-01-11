@@ -29,6 +29,12 @@ Controller::SetSdnKvsEnabled(bool sdn_kvs_enabled)
     m_sdn_kvs_enabled = sdn_kvs_enabled;
 }
 
+void
+Controller::SetDebug(bool debug)
+{
+    m_debug = debug;
+}
+
 TypeId
 Controller::GetTypeId()
 {
@@ -52,7 +58,11 @@ Controller::GetTypeId()
 void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
-    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully");
+    if (m_debug)
+    {
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully"
+                  << std::endl;
+    }
     // Initialize the schedule context
     uint32_t server_num = m_serverNodes.size();
     for (uint32_t i = 0; i < server_num; i++)
@@ -91,8 +101,9 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
     enum ofp_packet_in_reason reason = msg->reason;
 
     char* msgStr = ofl_structs_match_to_string((struct ofl_match_header*)msg->match, nullptr);
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Received Packet-In packet: "
-                                << msgStr << " from switch " << swtch->GetDpId());
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Received Packet-In packet: " << msgStr << " from switch " << swtch->GetDpId()
+              << std::endl;
     free(msgStr);
 
     if (reason == OFPR_ACTION)
@@ -207,8 +218,11 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 
     m_switchPortCnt[swDpId - 1] = port_cnt; // Store switch total port count
 
-    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch " << swDpId
-                                 << " completed");
+    if (m_debug)
+    {
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Configure switch "
+                  << swDpId << " completed" << std::endl;
+    }
 }
 
 std::vector<uint32_t>
@@ -230,9 +244,10 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         tot_key_num += req.key_num;
     }
     ss << "]";
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Do BP-LPT for array(size="
-                                << scheduleRequests.size() << ", tot_key_num=" << tot_key_num
-                                << ", ctrl_queue_siz=" << ctrl_queue_siz << "): " << ss.str());
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Do BP-LPT for array(size=" << scheduleRequests.size()
+              << ", tot_key_num=" << tot_key_num << ", ctrl_queue_siz=" << ctrl_queue_siz
+              << "): " << ss.str() << std::endl;
 
     std::vector<uint32_t> ret;
     std::set<uint32_t> req_set;
@@ -243,13 +258,16 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         req_weight[req.req_id] = req.weight;
     }
 
-    ss.str("");
-    ss << "[";
-    for (const auto& [server_id, ctx] : m_scheduleContexts)
-        ss << "(server_id=" << server_id << ", " << ctx << ")";
-    ss << "]";
-    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
-                                 << "] [Schedule Debug] Server context: " << ss.str());
+    if (m_debug)
+    {
+        ss.str("");
+        ss << "[";
+        for (const auto& [server_id, ctx] : m_scheduleContexts)
+            ss << "(server_id=" << server_id << ", " << ctx << ")";
+        ss << "]";
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                  << "] [Schedule Debug] Server context: " << ss.str() << std::endl;
+    }
 
     uint32_t turn_cnt = 0; // For debug
     while (!req_set.empty())
@@ -260,8 +278,12 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
             q; // <value, req_id>
 
         uint32_t sid = FindBottleneckServer(req_set);
-        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
-                                     << ++turn_cnt << "] Bottleneck server ID is " << sid);
+        if (m_debug)
+        {
+            std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                      << "] [Schedule Debug] [Turn " << ++turn_cnt << "] Bottleneck server ID is "
+                      << sid << std::endl;
+        }
         ss.str("");
         ss << "[";
 
@@ -278,10 +300,15 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         uint32_t target = q.top().second;
 
         ss << "]";
-        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
-                                     << turn_cnt << "] Request set: " << ss.str());
-        NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] [Schedule Debug] [Turn "
-                                     << turn_cnt << "] Target request ID is " << target);
+        if (m_debug)
+        {
+            std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                      << "] [Schedule Debug] [Turn " << turn_cnt << "] Request set: " << ss.str()
+                      << std::endl;
+            std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                      << "] [Schedule Debug] [Turn " << turn_cnt << "] Target request ID is "
+                      << target << std::endl;
+        }
 
         for (auto& [req_id, weight] : req_weight)
         {
@@ -302,8 +329,8 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
     for (const auto& req_id : ret)
         ss << "(req_id=" << req_id << ")";
     ss << "]";
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Schedule completed(size=" << ret.size() << "): " << ss.str());
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Schedule completed(size=" << ret.size() << "): " << ss.str() << std::endl;
 
     return ret;
 }
@@ -322,8 +349,8 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     // Print log
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet"
-                                << ss.str() << "(ctrl_queue_siz=" << tot_key_num << ")");
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet"
+              << ss.str() << "(ctrl_queue_siz=" << tot_key_num << ")" << std::endl;
     // Get server IP address
     ss.str("");
     Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
@@ -402,12 +429,17 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         }
         ksStat[server_id] = ks_sum;
     }
-    ss.str("");
-    ss << "[";
-    for (const auto& [server_id, ks_sum] : ksStat)
-        ss << "(server_id=" << server_id << ", ks_sum=" << ks_sum << ")";
-    ss << "]";
-    NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S) << "] Server keys: " << ss.str());
+
+    if (m_debug)
+    {
+        ss.str("");
+        ss << "[";
+        for (const auto& [server_id, ks_sum] : ksStat)
+            ss << "(server_id=" << server_id << ", ks_sum=" << ks_sum << ")";
+        ss << "]";
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                  << "] Server keys: " << ss.str() << std::endl;
+    }
 
     std::map<uint32_t, uint32_t> dt_base; // Delta send time base count. Map<server id, base count>
     // Total ks_siz for specific server. Used for set sending time. Map<server id, total ks_siz>
@@ -451,17 +483,23 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
             // Remove send event set before
             if (pkt->eventId.IsRunning())
             {
-                NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
-                                             << "] Cancel the send event for Packet(pkt_id="
-                                             << pkt->id << ")" << ss.str());
+                if (m_debug)
+                {
+                    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                              << "] Cancel the send event for Packet(pkt_id=" << pkt->id << ")"
+                              << ss.str() << std::endl;
+                }
                 pkt->eventId.Cancel();
             }
             // Set send event
             pkt->eventId = Simulator::Schedule(dt, &Controller::RemovePacketAndForward, this, *pkt);
-            NS_LOG_DEBUG("[Controller][" << Simulator::Now().As(Time::S)
-                                         << "] Packet(pkt_id=" << pkt->id << ")" << ss.str()
-                                         << " will be forwarded to the server " << pkt->dstServerId
-                                         << " in " << dt.As(Time::S));
+            if (m_debug)
+            {
+                std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                          << "] Packet(pkt_id=" << pkt->id << ")" << ss.str()
+                          << " will be forwarded to the server " << pkt->dstServerId << " in "
+                          << dt.As(Time::S) << std::endl;
+            }
         }
     }
     // Do not free the message.
@@ -498,12 +536,11 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
 
         // The server is overloaded. Modify the flow table to make each packet
         // sent from the client to be redirected to the controller.
-        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Server " << server_id
-                                    << "(ip=" << serverIp_str
-                                    << ", queue_siz=" << context.queue_size
-                                    << ", heavy_time=" << context.lastScheduleTime.As(Time::S)
-                                    << ", server_rate=" << context.server_rate
-                                    << ") is overloaded. Modify flow table for switch " << swDpId);
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Server " << server_id
+                  << "(ip=" << serverIp_str << ", queue_siz=" << context.queue_size
+                  << ", heavy_time=" << context.lastScheduleTime.As(Time::S)
+                  << ", server_rate=" << context.server_rate
+                  << ") is overloaded. Modify flow table for switch " << swDpId << std::endl;
         ss.str(""); // Clear string stream
         ss << "flow-mod cmd=mod,table=0,prio=100 "
            << "eth_type=0x0800,ip_dst=" << serverIp_str << " apply:output=ctrl:128";
@@ -513,18 +550,20 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         ScheduleContext& ctx = m_scheduleContexts[server_id];
         if (ctx.undoFlowEvents[swDpId].IsRunning())
         {
-            NS_LOG_DEBUG("[Controller]["
-                         << Simulator::Now().As(Time::S)
-                         << "] Cancel undo flow table modification event for switch " << swDpId
-                         << " (server_id=" << server_id << ")");
+            if (m_debug)
+            {
+                std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+                          << "] Cancel undo flow table modification event for switch " << swDpId
+                          << " (server_id=" << server_id << ")" << std::endl;
+            }
             ctx.undoFlowEvents[swDpId].Cancel();
         }
 
         // Set timer to undo modification.
         Time dt = Seconds(1.0 * (std::max(0U, sdnKvsHeader.GetQueueSiz() - 5)) /
                           (1000.0 * sdnKvsHeader.GetServerRate()));
-        NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
-                                    << " later will undo the modification of the flow table");
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
+                  << " later will undo the modification of the flow table" << std::endl;
         ctx.undoFlowEvents[swDpId] =
             Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
     }
@@ -545,9 +584,9 @@ Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
     if (port == -1)
         return; // Should be unreachable
 
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Undo the modification of the flow table(switch_id="
-                                << switch_id << ", server_ip=" << server_ip << ")");
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Undo the modification of the flow table(switch_id=" << switch_id
+              << ", server_ip=" << server_ip << ")" << std::endl;
 
     std::stringstream ss;
     ss << "flow-mod cmd=mod,table=0,prio=100 "
@@ -573,9 +612,9 @@ Controller::RemovePacketAndForward(SchedulePacket pkt)
     // Print log
     std::stringstream ss;
     pkt.sdnKvsHeader.Print(ss);
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S) << "] Forward packet(pkt_id="
-                                << pkt.id << ")" << ss.str() << " to the server " << pkt.dstServerId
-                                << " (ctrl_queue_siz=" << tot_key_num << ")");
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Forward packet(pkt_id=" << pkt.id << ")" << ss.str() << " to the server "
+              << pkt.dstServerId << " (ctrl_queue_siz=" << tot_key_num << ")" << std::endl;
 
     // Forward packet to the server
     ForwardPacket(pkt.msg, pkt.swtch, pkt.xid);
@@ -617,10 +656,10 @@ Controller::ForwardPacket(struct ofl_msg_packet_in* msg,
     reply.data = msg->data;
 
     int ret = SendToSwitch(swtch, (struct ofl_msg_header*)&reply, xid);
-    NS_LOG_INFO("[Controller][" << Simulator::Now().As(Time::S)
-                                << "] Sent Packet-Out packet: (buffer_id=" << reply.buffer_id
-                                << ", in_port=" << reply.in_port << ", out_port=" << action->port
-                                << ") to switch " << swtch->GetDpId());
+    std::cout << "[Controller][" << Simulator::Now().As(Time::S)
+              << "] Sent Packet-Out packet: (buffer_id=" << reply.buffer_id
+              << ", in_port=" << reply.in_port << ", out_port=" << action->port << ") to switch "
+              << swtch->GetDpId() << std::endl;
     free(action);
     return ret;
 }

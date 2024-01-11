@@ -9,10 +9,12 @@ ClientHelper::ClientHelper()
 }
 
 ClientHelper::ClientHelper(std::map<uint32_t, std::vector<RequestTableEntry>>& req_table,
-                           SchedulingType algorithm)
+                           SchedulingType algorithm,
+                           bool debug)
 {
     m_factory.SetTypeId(Client::GetTypeId());
     m_req_table = req_table;
+    m_debug = debug;
     SetAttribute("SbfEnabled",
                  BooleanValue(algorithm.client_algorithm == ClientSchedulingType::SBF));
     SetAttribute("DasEnabled",
@@ -35,6 +37,7 @@ ClientHelper::Install(NodeContainer c)
         m_client = m_factory.Create<Client>();
         m_client->SetRequestList(request_list);
         m_client->SetClientId(cnt++);
+        m_client->SetDebug(m_debug);
         Ptr<Node> node = c.Get(client_id);
         node->AddApplication(m_client);
         apps.Add(m_client);
