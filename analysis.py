@@ -14,6 +14,7 @@ pattern7 = re.compile(r"\[Client\]\[\+(.*?)s\] Received SDN-KVS packet\(id=(\d+)
 pattern8 = re.compile(r"tot_key_num = (\d+), tot_request_num = (\d+), tot_ks_num = (\d+)")
 pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
 pattern10 = re.compile(r"\[Controller\]\[\+(.*?)s\] Do BP-LPT for array\(size=(.*?), tot_key_num=(.*?), ctrl_queue_siz=(.*?)\): \[")
+pattern11 = re.compile(r"\[\d+\] \(server_id=(\d+), server_rate=(\d+), tqs=(\d+), srpt_enabled=(\d+), sbf_enabled=(\d+)\)")
 
 algorithm: str
 
@@ -25,14 +26,19 @@ ctrl_recv_time: dict[int, float] = {}
 ctrl_send_time: dict[int, float] = {}
 server_recv_time: dict[int, float] = {}
 server_send_time: dict[int, float] = {}
+server_rate: dict[int, float] = {}
+server_serve_time: dict[int, float] = {}
+server_tot_time: dict[int, float] = {}
 req_send_time: dict[int, float] = {}
 req_recv_time: dict[int, float] = {}
 
 req_response_time: dict[int, float] = {}
+req_st_send_time_dt: list[float] = []
 req_avg_response_time: float
 req_p99: np.floating
 req_p95: np.floating
 
+ks_dst_server: dict[int, int] = {}
 ks_response_time: dict[int, float] = {}
 ks_ctrl_wait_time: dict[int, float] = {}
 ks_avg_response_time: float
@@ -97,6 +103,19 @@ def print_result():
     plt.title("dst_server") 
     plt.savefig('dst_server.png')
     plt.clf()
+    
+    server_uti: dict[int, float] = {}
+    for i in range(0, server_num):
+        server_uti[i] = server_serve_time[i] / server_tot_time[i]
+    server_uti_x = list(server_uti.keys())
+    server_uti_y = list(server_uti.values())
+    print("Utilization: {}".format(sum(server_uti_y) / len(server_uti_x)))
+    plt.bar(server_uti_x, server_uti_y)
+    plt.xlabel("Server")
+    plt.ylabel("Uti")
+    plt.title("server_uti")
+    plt.savefig("server_uti.png")
+    plt.clf()
 
     for server_id in all_server_queue_size.keys():
         plt.plot(all_server_queue_size[server_id].keys(), all_server_queue_size[server_id].values(), alpha=0.5, label="server {}".format(server_id))
@@ -108,7 +127,15 @@ def print_result():
     plt.savefig('queue_len.png')
     plt.clf()
 
+    plt.hist(req_st_send_time_dt, bins = list(np.arange(min(req_st_send_time_dt), max(req_st_send_time_dt) + 0.1, 0.1)))
+    plt.xlabel("Delta send time")
+    plt.ylabel("Count")
+    plt.title("delta_send_time")
+    plt.savefig("delta_send_time.png")
+    plt.clf()
+
 def analyze():
+    global req_st_send_time_dt
     global req_avg_response_time
     global req_p99
     global req_p95
@@ -145,6 +172,27 @@ def analyze():
     ks_ctrl_wait_time_p99 = np.percentile(ks_ctrl_wait_time_sorted, 99)
     ks_ctrl_wait_time_p95 = np.percentile(ks_ctrl_wait_time_sorted, 95)
 
+    for req_id in range(2, tot_request_num + 1):
+        req_st_send_time_dt.append(req_st_send_time[req_id] - req_st_send_time[req_id - 1])
+
+    server_min_recv_time: dict[int, float] = {}
+    server_max_send_time: dict[int, float] = {}
+    for id, recv_time in server_recv_time.items():
+        dst_server = ks_dst_server[id]
+        send_time = server_send_time[id]
+        if dst_server not in server_min_recv_time:
+            server_min_recv_time[dst_server] = recv_time
+        else:
+            server_min_recv_time[dst_server] = min(server_min_recv_time[dst_server], recv_time)
+        if dst_server not in server_max_send_time:
+            server_max_send_time[dst_server] = send_time
+        else:
+            server_max_send_time[dst_server] = max(server_max_send_time[dst_server], send_time)
+    for server_id, recv_time in server_min_recv_time.items():
+        send_time = server_max_send_time[server_id]
+        server_serve_time[server_id] = dst_server_cnt[server_id] / server_rate[server_id]
+        server_tot_time[server_id] = round(send_time - recv_time, 0)
+
 def parse_line(line: str):
     global algorithm
     global client_send_cnt
@@ -170,6 +218,9 @@ def parse_line(line: str):
         ctrl_recv_time[id] = 0
         ctrl_send_time[id] = 0
         req_recv_time[req_id] = 0
+        ks_dst_server[id] = dst_server
+        if dst_server not in server_serve_time:
+            server_serve_time[dst_server] = 0
         if dst_server not in dst_server_cnt:
             dst_server_cnt[dst_server] = 0
         dst_server_cnt[dst_server] += ks_siz
@@ -192,7 +243,7 @@ def parse_line(line: str):
         server_id = int(match.group(2))
         queue_siz = int(match.group(3))
         id = int(match.group(5))
-        server_recv_time[server_id] = time
+        server_recv_time[id] = time
         server_recv_cnt += 1
         if server_id not in all_server_queue_size.keys():
             all_server_queue_size[server_id] = {}
@@ -249,6 +300,12 @@ def parse_line(line: str):
     if match:
         time = float(match.group(1)) * 1000
         ctrl_queue_size[time] = int(match.group(4))
+        return
+    match = pattern11.search(line)
+    if match:
+        id = int(match.group(1))
+        rate = float(match.group(2))
+        server_rate[id] = rate
         return
 
 def parse(file_path: str):

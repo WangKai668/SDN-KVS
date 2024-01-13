@@ -5,7 +5,7 @@ debug=false
 # Whether there is a hotspot server
 ifZipfian=false
 # The distribution type for generating key(0: POSSION, 1: PARETO)
-distribution_type=1
+distribution_type=0
 # The keyset size type(0: LIGHT, 1: HEAVY)
 keyset_size_type=0
 # Utilization
