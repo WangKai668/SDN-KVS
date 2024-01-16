@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from matplotlib import pyplot as plt
 
-pattern1 = re.compile(r"\[[0-9]+\] \(id=(\d+), st=(.*?), src_client=(\d+), dst_server=(\d+), dst_ip=(\d+\.\d+\.\d+\.\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_size=(\d+)\)")
+pattern1 = re.compile(r"\[[0-9]+\] \(id=(\d+), st=(.*?), src_client=(\d+), dst_server=(\d+), dst_ip=(\d+\.\d+\.\d+\.\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_size=(\d+), is_heavy=(\d+)\)")
 pattern2 = re.compile(r"\[Client\]\[\+(.*?)s\] Client (\d+) Sent SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) to server (\d+)\(ip=(\d+\.\d+\.\d+\.\d+), port=(\d+)\)")
 pattern3 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) received SDN-KVS packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) from (\d+\.\d+\.\d+\.\d+) port (\d+)")
 pattern4 = re.compile(r"\[Server\]\[\+(.*?)s\] Server (\d+)\(queue_siz=(\d+), update_time=\+(\d+[\.]{0,1}\d*)s\) sent response packet\(id=(\d+), req_id=(\d+), ks_siz=(\d+), bottleneck_ks_siz=(\d+), queue_siz=(\d+), server_rate=(\d+), heavy=(\d+), server_tqs=(\d+), priority=(\d+)\) to (\d+\.\d+\.\d+\.\d+) port (\d+)")
@@ -38,6 +38,7 @@ req_avg_response_time: float
 req_p99: np.floating
 req_p95: np.floating
 
+heavy_ks_dst_server_cnt: dict[int, int] = {}
 ks_dst_server: dict[int, int] = {}
 ks_response_time: dict[int, float] = {}
 ks_ctrl_wait_time: dict[int, float] = {}
@@ -127,11 +128,21 @@ def print_result():
     plt.savefig('queue_len.png')
     plt.clf()
 
-    plt.hist(req_st_send_time_dt, bins = list(np.arange(min(req_st_send_time_dt), max(req_st_send_time_dt) + 0.1, 0.1)))
+    # plt.hist(req_st_send_time_dt, bins = list(np.arange(min(req_st_send_time_dt), max(req_st_send_time_dt) + 0.1, 0.1)))
+    plt.hist(req_st_send_time_dt)
     plt.xlabel("Delta send time")
     plt.ylabel("Count")
     plt.title("delta_send_time")
     plt.savefig("delta_send_time.png")
+    plt.clf()
+    
+    heavy_ks_dst_server_x = list(heavy_ks_dst_server_cnt.keys())
+    heavy_ks_dst_server_y = list(heavy_ks_dst_server_cnt.values())
+    plt.bar(heavy_ks_dst_server_x, heavy_ks_dst_server_y)
+    plt.xlabel("Server")
+    plt.ylabel("Count")
+    plt.title("heavy_ks_dst_server_cnt") 
+    plt.savefig('heavy_ks_dst_server_cnt.png')
     plt.clf()
 
 def analyze():
@@ -206,6 +217,7 @@ def parse_line(line: str):
     global tot_ks_num
     global req_siz
     global dst_server_cnt
+    global heavy_ks_dst_server_cnt
     match = pattern1.search(line)
     if match:
         id = int(match.group(1))
@@ -213,6 +225,7 @@ def parse_line(line: str):
         dst_server = int(match.group(4))
         req_id = int(match.group(6))
         ks_siz = int(match.group(7))
+        is_heavy = int(match.group(9))
         req_st_send_time[req_id] = st
         ks_st_send_time[id] = st
         ctrl_recv_time[id] = 0
@@ -227,6 +240,10 @@ def parse_line(line: str):
         if req_id not in req_siz:
             req_siz[req_id] = 0
         req_siz[req_id] += ks_siz
+        if dst_server not in heavy_ks_dst_server_cnt:
+            heavy_ks_dst_server_cnt[dst_server] = 0
+        if is_heavy == 1:
+            heavy_ks_dst_server_cnt[dst_server] += 1
         return
     match = pattern2.search(line)
     if match:

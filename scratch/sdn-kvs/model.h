@@ -18,6 +18,7 @@ struct RequestTableEntry
     uint32_t req_id;     // Request id that the packet belongs to
     uint32_t ks_siz;     // Keyset size
     uint32_t bottleneck_ks_size;
+    bool is_heavy;
 };
 
 struct ServerRateRatio

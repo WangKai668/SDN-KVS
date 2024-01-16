@@ -36,7 +36,7 @@ uint32_t server_tqs = 64;                      // Server TQS
 uint32_t client_num = 15;                      // The number of client node
 uint32_t server_num = 15;                      // The number of server node
 uint32_t key_num = 50000; // The upper bound of the total number of keys(n keys = 1 keyset)
-static const int request_size = 60;
+static const int request_size = 120;
 /**
  * Global variable
  */
@@ -47,30 +47,42 @@ std::map<uint32_t, std::vector<RequestTableEntry>> req_table; // Key: client id
 std::mt19937 gen(1701);
 std::poisson_distribution<> req_siz_possion_rng(request_size);
 Ptr<ParetoRandomVariable> req_siz_rng = CreateObject<ParetoRandomVariable>();
+uint32_t cur_heavy_dst_server = 0;
 
 /**
  * Generate destination server id(start from 0) for keyset
  */
 uint32_t
-generate_dst_server(std::unordered_map<uint32_t, bool>& is_add, Ptr<RandomVariableStream> rng)
+generate_dst_server(std::unordered_map<uint32_t, bool>& is_add,
+                    Ptr<RandomVariableStream> rng,
+                    bool is_heavy)
 {
     uint32_t ret;
-    while (true)
+    if (is_heavy)
     {
-        uint32_t x = rng->GetInteger() - 1; // [0, server_num - 1]
-        if (ifZipfian)
+        ret = cur_heavy_dst_server;
+        is_add[ret] = true;
+        cur_heavy_dst_server = (cur_heavy_dst_server + 1) % server_num;
+    }
+    else
+    {
+        while (true)
         {
-            int value1 = server_num * 0.2 < 1 ? 1 : server_num * 0.2 + 1;
-            // 生成 value1 * (value - 1) 到 value1 * x 之间的随机数
-            int value2 = (rand() % (value1 + 1)) + value1 * (x - 1);
-            x = value2 % server_num;
-        }
+            uint32_t x = rng->GetInteger() - 1; // [0, server_num - 1]
+            if (ifZipfian)
+            {
+                int value1 = server_num * 0.2 < 1 ? 1 : server_num * 0.2 + 1;
+                // 生成 value1 * (value - 1) 到 value1 * x 之间的随机数
+                int value2 = (rand() % (value1 + 1)) + value1 * (x - 1);
+                x = value2 % server_num;
+            }
 
-        if (is_add[x] == false)
-        {
-            ret = x;
-            is_add[x] = true;
-            break;
+            if (is_add[x] == false)
+            {
+                ret = x;
+                is_add[x] = true;
+                break;
+            }
         }
     }
     return ret; // Start from 0
@@ -110,7 +122,8 @@ print_request_table()
                       << ", src_client=" << entry.src_client << ", dst_server=" << entry.dst_server
                       << ", dst_ip=" << entry.dst_ip << ", req_id=" << entry.req_id
                       << ", ks_siz=" << entry.ks_siz
-                      << ", bottleneck_ks_size=" << entry.bottleneck_ks_size << ")" << std::endl;
+                      << ", bottleneck_ks_size=" << entry.bottleneck_ks_size
+                      << ", is_heavy=" << entry.is_heavy << ")" << std::endl;
         }
     }
 }
@@ -161,7 +174,7 @@ init_request_table_from_file()
             std::regex pattern(
                 "\\[[0-9]+\\] \\(id=(\\d+), st=(.*?), src_client=(\\d+), "
                 "dst_server=(\\d+), dst_ip=(\\d+\\.\\d+\\.\\d+\\.\\d+), req_id=(\\d+), "
-                "ks_siz=(\\d+), bottleneck_ks_size=(\\d+)\\)");
+                "ks_siz=(\\d+), bottleneck_ks_size=(\\d+), is_heavy=(\\d+)\\)");
 
             std::smatch result;
             if (std::regex_search(str, result, pattern))
@@ -175,6 +188,7 @@ init_request_table_from_file()
                 entry.req_id = std::stoul(result[6].str());
                 entry.ks_siz = std::stoul(result[7].str());
                 entry.bottleneck_ks_size = std::stoul(result[8].str());
+                entry.is_heavy = std::stoul(result[9].str());
                 entry.dst_port = server_port;
                 tot_key_num += entry.ks_siz;
                 tot_ks_num++;
@@ -227,6 +241,7 @@ init_request_table(NodeContainer& serverNodes)
     while (key_num > 0)
     {
         std::vector<uint32_t> keyset; // All keysets generated for this request
+        std::vector<bool> keyset_heavy_flag;
 
         // The client that this request was sent from
         uint32_t client_id = client_rng->GetInteger();
@@ -262,6 +277,7 @@ init_request_table(NodeContainer& serverNodes)
                     continue;
                 // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
+                keyset_heavy_flag.push_back(true);
             }
             for (auto val : light_vec)
             {
@@ -269,6 +285,7 @@ init_request_table(NodeContainer& serverNodes)
                     continue;
                 // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
+                keyset_heavy_flag.push_back(false);
             }
             break;
         }
@@ -280,6 +297,7 @@ init_request_table(NodeContainer& serverNodes)
                     continue;
                 // std::cout << "debug keyset size " << val << std::endl;
                 keyset.push_back(val);
+                keyset_heavy_flag.push_back(false);
             }
             break;
         }
@@ -292,10 +310,12 @@ init_request_table(NodeContainer& serverNodes)
         uint32_t bottleneck_keyset =
             *std::max_element(keyset.begin(), keyset.end()); // bottleneck keyset size
         std::unordered_map<uint32_t, bool> is_add;
-        for (uint32_t ks_siz : keyset)
+        for (uint32_t i = 0; i < keyset.size(); i++)
         {
+            uint32_t ks_siz = keyset[i];
+            bool is_heavy = keyset_heavy_flag[i];
             // The server that this keyset data packet was sent to
-            uint32_t server_id = generate_dst_server(is_add, server_rng);
+            uint32_t server_id = generate_dst_server(is_add, server_rng, is_heavy);
             // Get IPv4 address from server id
             Ptr<Node> serverNode = serverNodes.Get(server_id);
             std::stringstream ss;
@@ -312,6 +332,7 @@ init_request_table(NodeContainer& serverNodes)
             entry.req_id = req_id;
             entry.ks_siz = ks_siz;
             entry.bottleneck_ks_size = bottleneck_keyset;
+            entry.is_heavy = is_heavy;
 
             // Record this entry to the temporary vector
             vec.push_back(entry);
