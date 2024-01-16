@@ -15,7 +15,7 @@ pattern8 = re.compile(r"tot_key_num = (\d+), tot_request_num = (\d+), tot_ks_num
 pattern9 = re.compile(r" - algorithm = ([A-Z-]+)\(server_algorithm: ([A-Z_]+), client_algorithm: ([A-Z]+), controller_algorithm: ([A-Z_]+)\)")
 pattern10 = re.compile(r"\[Controller\]\[\+(.*?)s\] Do BP-LPT for array\(size=(.*?), tot_key_num=(.*?), ctrl_queue_siz=(.*?)\): \[")
 pattern11 = re.compile(r"\[\d+\] \(server_id=(\d+), server_rate=(\d+), tqs=(\d+), srpt_enabled=(\d+), sbf_enabled=(\d+)\)")
-
+pattern12 = re.compile(r"tot_key_num = (\d+), tot_request_num = (\d+), tot_ks_num = (\d+)")
 algorithm: str
 
 req_st_send_time: dict[int, float] = {}
@@ -68,6 +68,7 @@ ctrl_queue_size = {}
 all_server_queue_size = {}
 
 def print_result():
+    print("tot_key_num = {}, tot_request_num = {}, tot_ks_num = {}, avg_req_size = {:.4f}, avg_ks_size = {:.4f}".format(tot_key_num,tot_request_num,tot_ks_num,tot_key_num/tot_request_num,tot_key_num/tot_ks_num))
     print("Request: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(req_avg_response_time, req_p95, req_p99))
     print("Keyset: avg = {:.4f}ms, p95 = {:.4f}ms, p99 = {:.4f}ms".format(ks_avg_response_time, ks_p95, ks_p99))
     

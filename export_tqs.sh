@@ -5,32 +5,68 @@ echo "TQS变化实验" > ${result_file}
 c=50
 s=50
 k=150000
-for ((i=1; i<=4; i++)); do
+for ((i=1; i<=8; i++)); do
     case $i in
         1) 
-            x=0
-            y=0
+            x=1
+            y=1
+            z=1
             r=1:0:0
-            u=0.7
+            u=1.0
             h=false
             ;;
         2)
-            x=0
-            y=0
-            r=1:0:0
-            u=0.7
-            h=true
+            x=1
+            y=1
+            z=1
+            r=1:1:0
+            u=1.0
+            h=false
             ;;
         3)
             x=1
             y=1
+            z=1
             r=1:0:0
-            u=0.7
-            h=false
+            u=1.0
+            h=true
             ;;
         4)
             x=1
             y=1
+            z=1
+            r=1:1:0
+            u=1.0
+            h=true
+            ;;
+        5) 
+            x=0
+            y=0
+            z=0
+            r=1:0:0
+            u=0.7
+            h=false
+            ;;
+        6)
+            x=0
+            y=0
+            z=0
+            r=1:0:0
+            u=0.7
+            h=true
+            ;;
+        7)
+            x=1
+            y=1
+            z=0
+            r=1:0:0
+            u=0.7
+            h=false
+            ;;
+        8)
+            x=1
+            y=1
+            z=0
             r=1:0:0
             u=0.7
             h=true
@@ -47,16 +83,16 @@ for ((i=1; i<=4; i++)); do
         if [ $a = 4 ]; then
             for q in ${qs[@]}; do
                 if [ $h = true ]; then
-                    (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
+                    (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r -q $q >> ${result_file}) &>> ${result_file}
                 else
-                    (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r -q $q >> ${result_file}) &>> ${result_file}
+                    (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r -q $q >> ${result_file}) &>> ${result_file}
                 fi
             done
         else
             if [ $h = true ]; then
-                (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r >> ${result_file}) &>> ${result_file}
+                (time bash run.sh -h -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r >> ${result_file}) &>> ${result_file}
             else
-                (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -r $r >> ${result_file}) &>> ${result_file}
+                (time bash run.sh -c $c -s $s -k $k -a $a -u $u -x $x -y $y -z $z -r $r >> ${result_file}) &>> ${result_file}
             fi
         fi
     done
