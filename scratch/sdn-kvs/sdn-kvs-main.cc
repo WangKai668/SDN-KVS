@@ -27,8 +27,9 @@ bool ifZipfian = true;            // Whether there is a hotspot server
 bool req_table_from_file = false; // Whether get request table from request_table.txt file
 DistributionType req_size_distribution_type = PARETO; // The distribution type for generating key
 KeysetSizeType keyset_size_type = HEAVY;              // The keyset size type
-double uti = 0.7;                                     // Utilization
-uint32_t simTime = 1000;                              // Simulator running time(unit: second)
+SendTimeType send_time_type = DYNAMIC;                // The send time type
+double uti = 0.7;        // Utilization(Always 1.0 when dynamic send time type)
+uint32_t simTime = 1000; // Simulator running time(unit: second)
 ServerRateRatio server_rate_ratio = {1, 0, 0}; // Server rate ratio. (Server rate: number of keys
                                                // processed per millisecond)
 uint16_t server_port = 25565;                  // Server listen port
@@ -218,7 +219,7 @@ init_request_table(NodeContainer& serverNodes)
     double x_min = request_size * (alpha - 1) / alpha;
     req_siz_rng->SetAttribute("Scale", DoubleValue(x_min));
     req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
-    req_siz_rng->SetAttribute("Bound", DoubleValue(1000));
+    req_siz_rng->SetAttribute("Bound", DoubleValue(request_size));
 
     std::poisson_distribution<> ks_num_rng(server_num / 2.0);
 
@@ -354,20 +355,42 @@ init_request_table(NodeContainer& serverNodes)
     double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
 
+    // For dynamic send_time_type
     Ptr<ExponentialRandomVariable> send_time_rng = CreateObject<ExponentialRandomVariable>();
     send_time_rng->SetAttribute("Mean", DoubleValue(t_mean));
+    // For static send_time_type
+    double dt = 0.00001;
+    double delta_time = 0.01;
+    uint32_t groups_num = std::min(50U, std::max(1U, tot_request_num / 5)); // [1, 50]
+    uint32_t dt_base = 0;
 
     for (uint32_t req_id = 1; req_id <= tot_request_num; req_id++)
     {
-        double r = 0;
-        while (true)
+        switch (send_time_type)
         {
-            r = send_time_rng->GetValue();
-            if (r != 0)
-                break;
+        case STATIC: {
+            send_time_mp[req_id] = send_time + dt * dt_base;
+            ++dt_base;
+            if (req_id % groups_num == 0)
+            {
+                dt_base = 0;
+                send_time += delta_time;
+            }
+            break;
         }
-        send_time += Seconds(r).GetSeconds();
-        send_time_mp[req_id] = send_time;
+        case DYNAMIC:
+        default: {
+            double r = 0;
+            while (true)
+            {
+                r = send_time_rng->GetValue();
+                if (r != 0)
+                    break;
+            }
+            send_time += Seconds(r).GetSeconds();
+            send_time_mp[req_id] = send_time;
+        }
+        }
     }
 
     // Fill send time for each request table entry,
@@ -472,6 +495,7 @@ init_parameter(int argc, char* argv[])
     uint32_t algorithm_index = 0;                // Default: FIFO
     uint32_t distribution_type_index = 0;        // Default: POSSION
     uint32_t keyset_size_type_index = 0;         // Default: LIGHT
+    uint32_t send_time_type_index = 0;           // Default: DYNAMIC
     std::string server_rate_ratio_str = "1:0:0"; // Default: 1:0:0
     cmd.AddValue("algorithm",
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
@@ -484,6 +508,9 @@ init_parameter(int argc, char* argv[])
     cmd.AddValue("keyset_size_type",
                  "The keyset size type(0: LIGHT, 1: HEAVY)",
                  keyset_size_type_index);
+    cmd.AddValue("send_time_type",
+                 "The send time type(0: DYNAMIC, 1: STATIC)",
+                 send_time_type_index);
     cmd.AddValue("uti", "Utilization", uti);
     cmd.AddValue("simTime", "Simulator running time(unit: second)", simTime);
     cmd.AddValue("server_rate_ratio",
@@ -536,6 +563,17 @@ init_parameter(int argc, char* argv[])
         keyset_size_type = LIGHT;
     }
 
+    switch (send_time_type_index)
+    {
+    case 1:
+        send_time_type = STATIC;
+        uti = 1.0;
+        break;
+    case 0:
+    default:
+        send_time_type = DYNAMIC;
+    }
+
     // Parse server rate ratio string
     server_rate_ratio = parse_ratio(server_rate_ratio_str);
 
@@ -546,6 +584,7 @@ init_parameter(int argc, char* argv[])
     std::cout << " - ifZipfian = " << ifZipfian << std::endl;
     std::cout << " - distribution_type = " << req_size_distribution_type << std::endl;
     std::cout << " - keyset_size_type = " << keyset_size_type << std::endl;
+    std::cout << " - send_time_type = " << send_time_type << std::endl;
     std::cout << " - uti = " << uti << std::endl;
     std::cout << " - simTime = " << simTime << std::endl;
     std::cout << " - server_rate_ratio = " << server_rate_ratio << std::endl;

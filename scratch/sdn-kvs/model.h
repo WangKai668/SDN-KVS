@@ -39,6 +39,12 @@ enum KeysetSizeType
     LIGHT  // Light
 };
 
+enum SendTimeType
+{
+    DYNAMIC, // Dynamic
+    STATIC   // Static
+};
+
 enum class ServerSchedulingType
 {
     SRPT,
@@ -94,6 +100,21 @@ operator<<(std::ostream& os, KeysetSizeType c)
     case HEAVY:
     default:
         os << "HEAVY";
+    }
+    return os;
+}
+
+inline std::ostream&
+operator<<(std::ostream& os, SendTimeType c)
+{
+    switch (c)
+    {
+    case DYNAMIC:
+        os << "DYNAMIC";
+        break;
+    case STATIC:
+    default:
+        os << "STATIC";
     }
     return os;
 }
