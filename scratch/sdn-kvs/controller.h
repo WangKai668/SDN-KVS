@@ -134,6 +134,7 @@ class Controller : public OFSwitch13Controller
      * \param server_ip Destination server IPv4 address string.
      */
     void UndoFlowModify(uint32_t switch_id, std::string server_ip);
+    void UndoFlowModifyFlag(uint32_t switch_id, std::string server_ip);
 
     /**
      * Get Ipv4Address string from ns3 node object.
@@ -189,7 +190,7 @@ class Controller : public OFSwitch13Controller
      * Remove packet from controller and forward it to the server
      * \param pkt Packet received from client.
      */
-    void RemovePacketAndForward(SchedulePacket pkt);
+    void RemovePacketAndForward(SchedulePacket pkt, uint32_t req_id);
 
     /**
      * Do BP-LPT algorithm. This function will sort the request list.
@@ -231,6 +232,9 @@ class Controller : public OFSwitch13Controller
     std::map<std::string, uint32_t> m_ipToServer; //!< Map<ipv4, server id>
     std::map<std::string, uint32_t> m_ipToClient; //!< Map<ipv4, client id>
     uint32_t m_switchPortCnt[2] = {0, 0};         //!< Switch total port count
+    double m_eta;
+    uint32_t m_minQ = 5;
+    std::map<std::pair<uint32_t, std::string>, int32_t> undoFlowEventsFlag;
 
     /**
      * These variables are used for scheduling.

@@ -4,6 +4,7 @@
 
 #include "ns3/address-utils.h"
 #include "ns3/boolean.h"
+#include "ns3/double.h"
 #include "ns3/inet-socket-address.h"
 #include "ns3/inet6-socket-address.h"
 #include "ns3/ipv4-address.h"
@@ -52,6 +53,11 @@ Server::GetTypeId()
                           UintegerValue(64),
                           MakeUintegerAccessor(&Server::m_tqs),
                           MakeUintegerChecker<uint32_t>())
+            .AddAttribute("F_tqs_dynamic",
+                          "  ",
+                          UintegerValue(0),
+                          MakeUintegerAccessor(&Server::f_tqs_dynamic),
+                          MakeUintegerChecker<uint32_t>())
             .AddAttribute("SrptEnabled",
                           "Whether SRPT algorithm is enabled on the server.",
                           BooleanValue(false),
@@ -67,6 +73,11 @@ Server::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&Server::m_sdn_kvs_enabled),
                           MakeBooleanChecker())
+            .AddAttribute("SRavg",
+                          "Average server rate.",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&Server::m_SR_avg),
+                          MakeDoubleChecker<double>())
             // MODIFY END
             .AddTraceSource("Rx",
                             "A packet has been received",
@@ -84,6 +95,7 @@ Server::Server()
     // MODIFY BEGIN
     m_queue_size = 0;
     m_lst = 0;
+    m_maxq_lst = 0;
     // MODIFY END
 }
 
@@ -263,11 +275,83 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
     // Update queue size
     int64_t cur = Simulator::Now().GetMilliSeconds();
     if (m_lst > 0)
+    {
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
+        m_queue_out += std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
+    }
+
     m_queue_size += sdnKvsHeader.GetKsSiz();
+
+    m_queue_size_avg = 0.99 * m_queue_size_avg + 0.01 * m_queue_size;    // 均值队列
+    m_queue_size_max = std::max(m_queue_size_max, (double)m_queue_size); // 最大队列
+
+    // Check and set heavy flag.
+    // Default value is 0, so just check the condition of being greater than TQS.
+    sdnKvsHeader.SetHeavy(0U);
+
+    if (cur - m_maxq_lst > deltaT)
+    {
+        if (m_queue_size + m_queue_out > m_queue_size_last)
+            m_util_avg_short = 1.0 * (m_queue_size + m_queue_out - m_queue_size_last) /
+                               (m_server_rate * (cur - m_maxq_lst));
+        else
+            m_util_avg_short = 0;
+
+        m_util_avg_long = 0.99 * m_util_avg_long + 0.01 * m_util_avg_short;
+
+        std::cout << "[Debug] " << m_server_id << "( que_avg = " << m_queue_size_avg
+                  << ", que_max = " << m_queue_size_max << ", tqs = " << m_tqs_dynamic
+                  << " que_siz = " << m_queue_size << ", que_size_last = " << m_queue_size_last
+                  << ", que_out = " << m_queue_out << ", deltaT = " << cur - m_maxq_lst
+                  << ", u_long = " << m_util_avg_long << ", u_short = " << m_util_avg_short
+                  << ", server_rate = " << m_server_rate << ", SR_avg = " << m_SR_avg << ")"
+                  << std::endl;
+
+        m_queue_size_last = m_queue_size;
+        m_queue_out = 0;
+        m_queue_size_max = m_queue_size_avg;
+        m_maxq_lst = cur;
+    }
+
+    m_lst = m_queue_size ? cur : 0;
+
+    m_tqs_dynamic = m_queue_size_avg * m_queue_size_avg / m_queue_size_max *
+                    (m_server_rate / m_SR_avg) *
+                    (m_util_avg_long / std::max(m_util_avg_short, 0.1));
+
+    if (m_tqs_dynamic < 2.0)
+        m_tqs_dynamic = 2.0;
+    // if (m_tqs_dynamic > m_queue_size_avg * m_queue_size_avg / m_queue_size_max)
+    //     m_tqs_dynamic = m_queue_size_avg * m_queue_size_avg / m_queue_size_max;
+
     m_lst = cur;
     sdnKvsHeader.SetHeavy(0); // Set heavy flag when sending packet
-    if (m_sdn_kvs_enabled && m_queue_size >= m_tqs)
+
+    if (f_tqs_dynamic)
+    {
+        if (m_sdn_kvs_enabled && m_queue_size >= m_tqs_dynamic)
+        {
+            Ptr<Packet> pkt = Create<Packet>();
+            SdnKvsHeader hdr;
+            hdr.SetId(0);
+            hdr.SetReqId(sdnKvsHeader.GetReqId());
+            hdr.SetKsSiz(sdnKvsHeader.GetKsSiz());
+            hdr.SetHeavy(1U);
+            hdr.SetQueueSiz(m_queue_size);
+            hdr.SetServerRate(m_server_rate);
+            hdr.SetServerTqs(m_tqs_dynamic);
+            pkt->AddHeader(hdr);
+            socket->SendTo(pkt, 0, from);
+            // Server overloaded, send signal packet to SDN controller
+            std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
+                      << " is overloaded, set heavy field to 1"
+                      << "(queue_siz = " << m_queue_size << ", que_avg = " << m_queue_size_avg
+                      << ", que_max = " << m_queue_size_max << ", tqs_dynamic = " << m_tqs_dynamic
+                      << ", tqs = " << m_tqs << ", util_avg_long = " << m_util_avg_long
+                      << ", util_avg_short = " << m_util_avg_short << ")" << std::endl;
+        }
+    }
+    else if (m_sdn_kvs_enabled && m_queue_size >= m_tqs)
     {
         Ptr<Packet> pkt = Create<Packet>();
         SdnKvsHeader hdr;
@@ -283,7 +367,10 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
     }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
-    sdnKvsHeader.SetServerTqs(m_tqs);
+    if (f_tqs_dynamic)
+        sdnKvsHeader.SetServerTqs(m_tqs_dynamic);
+    else
+        sdnKvsHeader.SetServerTqs(m_tqs);
 
     packet->AddHeader(sdnKvsHeader);
 }
@@ -328,21 +415,43 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
         // Update queue size if the queue is not empty(and SRPT/sbf algorithm is disabled)
         int64_t cur = Simulator::Now().GetMilliSeconds();
         m_queue_size -= std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
+        m_queue_out += std::min(m_queue_size, uint32_t(m_server_rate * (cur - m_lst)));
+
         m_lst = m_queue_size ? cur : 0;
         // Check and set heavy flag.
         // Default value is 0, so just check the condition of being greater than TQS.
-        if (m_queue_size > m_tqs)
+        if (f_tqs_dynamic)
+        {
+            if (m_queue_size >= m_tqs_dynamic)
+            {
+                // Server overloaded, send signal packet to SDN controller
+                std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server "
+                          << m_server_id << " is overloaded, set heavy field to 1"
+                          << "(queue_siz = " << m_queue_size << ", que_avg = " << m_queue_size_avg
+                          << ", que_max = " << m_queue_size_max
+                          << ", tqs_dynamic = " << m_tqs_dynamic << ", tqs = " << m_tqs
+                          << ", util_avg_long = " << m_util_avg_long
+                          << ", util_avg_short = " << m_util_avg_short << ")" << std::endl;
+                sdnKvsHeader.SetHeavy(1U);
+            }
+        }
+        else if (m_queue_size > m_tqs)
         {
             // Server overloaded, send signal packet to SDN controller
             std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
                       << " is overloaded, set heavy field to 1"
-                      << "(queue_siz = " << m_queue_size << ", tqs = " << m_tqs << ")" << std::endl;
+                      << "(queue_siz = " << m_queue_size << ", que_avg = " << m_queue_size_avg
+                      << ", tqs = " << m_tqs << ")" << std::endl;
             sdnKvsHeader.SetHeavy(1U);
         }
     }
+
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
-    sdnKvsHeader.SetServerTqs(m_tqs);
+    if (f_tqs_dynamic)
+        sdnKvsHeader.SetServerTqs(m_tqs_dynamic);
+    else
+        sdnKvsHeader.SetServerTqs(m_tqs);
     packet->AddHeader(sdnKvsHeader);
     std::stringstream ss;
     sdnKvsHeader.Print(ss);

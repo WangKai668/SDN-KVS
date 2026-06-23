@@ -1,6 +1,9 @@
 #ifndef MODEL_H
 #define MODEL_H
 
+#include <iostream>
+#include <map>
+#include <sstream>
 #include <string>
 
 /**
@@ -185,7 +188,8 @@ operator<<(std::ostream& os, SchedulingType type)
 inline std::ostream&
 operator<<(std::ostream& os, ServerRateRatio ratio)
 {
-    os << ratio.r1 << ":" << ratio.r2 << ":" << ratio.r3;
+    os << std::to_string(ratio.r1) << ":" << std::to_string(ratio.r2) << ":"
+       << std::to_string(ratio.r3);
     return os;
 }
 

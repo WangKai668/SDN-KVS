@@ -37,7 +37,10 @@ uint32_t server_tqs = 64;                      // Server TQS
 uint32_t client_num = 15;                      // The number of client node
 uint32_t server_num = 15;                      // The number of server node
 uint32_t key_num = 50000; // The upper bound of the total number of keys(n keys = 1 keyset)
-static const int request_size = 120;
+uint32_t f_tqs_dynamic = 1;
+uint32_t network_latency = 600; // Default: 600ns
+
+static const int request_size = 80;
 /**
  * Global variable
  */
@@ -96,7 +99,7 @@ generate_request_size()
     switch (req_size_distribution_type)
     {
     case POSSION: {
-        x = req_siz_possion_rng(gen);
+        x = req_siz_possion_rng(gen); // modify by wk
         break;
     }
     case PARETO: {
@@ -221,7 +224,7 @@ init_request_table(NodeContainer& serverNodes)
     req_siz_rng->SetAttribute("Shape", DoubleValue(alpha));
     req_siz_rng->SetAttribute("Bound", DoubleValue(request_size));
 
-    std::poisson_distribution<> ks_num_rng(server_num / 2.0);
+    std::poisson_distribution<> ks_num_rng(server_num / 2.0); // modify by wangkai
 
     Ptr<RandomVariableStream> server_rng;
     if (ifZipfian)
@@ -331,8 +334,8 @@ init_request_table(NodeContainer& serverNodes)
             entry.dst_ip = ss.str();
             entry.dst_port = server_port;
             entry.req_id = req_id;
-            entry.ks_siz = ks_siz;
-            entry.bottleneck_ks_size = bottleneck_keyset;
+            entry.ks_siz = ks_siz * 1;
+            entry.bottleneck_ks_size = bottleneck_keyset * 1;
             entry.is_heavy = is_heavy;
 
             // Record this entry to the temporary vector
@@ -346,13 +349,19 @@ init_request_table(NodeContainer& serverNodes)
 
     // Initialize send time
     // double req_mean = 1.0 * tot_key_num / tot_ks_num;
-    double req_mean = 1.0 * tot_key_num / tot_request_num;
+    double req_mean = 1.0 * tot_key_num * 1 / tot_request_num;
     double send_time = 2;
     uint32_t ratio_tot = server_rate_ratio.r1 + server_rate_ratio.r2 + server_rate_ratio.r3;
     double server_rate =
         1.0 * (server_rate_ratio.r1 + server_rate_ratio.r2 * 2 + server_rate_ratio.r3 * 3) /
         ratio_tot;
     double t_mean = (req_mean * 1.0 / (server_rate * 1000.0)) / (uti * double(server_num));
+    // tot_key_num = 150000, tot_request_num = 1254, tot_ks_num = 27886, avg_req_size = 119.6172,
+    // avg_ks_size = 5.3790
+
+    //  req_mean = 150000 / 1254 = 119.62
+    //  t_mean = 120 / (1000 /s *0.7 * 50) = 3.43*1e-3 s = 3.43 ms
+
     std::map<uint32_t, double> send_time_mp; // Map<request id, send time>
 
     // For dynamic send_time_type
@@ -522,6 +531,9 @@ init_parameter(int argc, char* argv[])
     cmd.AddValue("key_num",
                  "The upper bound of the total number of keys(n keys = 1 keyset)",
                  key_num);
+    cmd.AddValue("tqs_dynamic", "", f_tqs_dynamic);
+    cmd.AddValue("network_latency", "", network_latency);
+
     cmd.Parse(argc, argv);
 
     switch (algorithm_index)
@@ -604,6 +616,9 @@ main(int argc, char* argv[])
     Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(10000));
     Config::SetDefault("ns3::ArpCache::WaitReplyTimeout", TimeValue(Seconds(10)));
     Config::SetDefault("ns3::ArpCache::MaxRetries", UintegerValue(300));
+    // Config::SetDefault("ns3::CsmaNetDevice::TxQueue::MaxPackets", UintegerValue(10000));
+
+    // Config::SetDefault("ns3::QueueBase::MaxPackets", UintegerValue(10000000));
 
     // Enable checksum computations (required by OFSwitch13 module)
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
@@ -626,7 +641,23 @@ main(int argc, char* argv[])
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
     csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Gbps")));
-    csmaHelper.SetChannelAttribute("Delay", TimeValue(PicoSeconds(1)));
+    // csmaHelper.SetChannelAttribute("Delay", TimeValue(PicoSeconds(1))); //// wk
+    // csmaHelper.SetChannelAttribute("Delay", TimeValue(NanoSeconds(600))); //// wk
+    csmaHelper.SetChannelAttribute("Delay", TimeValue(NanoSeconds(network_latency))); //// wk
+    /*
+    [Server][+2.01623s] Server 46(queue_siz=0, update_time=+0s) received SDN-KVS packet(id=25381,
+    req_id=3, ks_siz=4, bottleneck_ks_siz=0, queue_siz=0, server_rate=0, heavy=0, server_tqs=0,
+    priority=4) from 10.1.1.46 port 49180
+
+    [Server][+6.55658s] Server 44(queue_siz=0, update_time=+0s) sent response packet(id=22017,
+    req_id=1254, ks_siz=1, bottleneck_ks_siz=0, queue_siz=0, server_rate=1, heavy=0, server_tqs=6,
+    priority=1) to 10.1.1.39 port 49797
+
+    [Client][+2.01667s] Received SDN-KVS packet(id=11435, req_id=1, ks_siz=5, bottleneck_ks_siz=0,
+    queue_siz=0, server_rate=1, heavy=0, server_tqs=6, priority=5) from 10.1.1.70 port 25565
+
+
+    */
 
     // Net devices of all nodes for assigning IPv4 address later
     NetDeviceContainer nodeDevices;
@@ -682,7 +713,28 @@ main(int argc, char* argv[])
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
-    ServerHelper serverHelper(server_port, server_rate_ratio, server_tqs, algorithm);
+
+    double SR_avg = 1.0;
+
+    if ((server_rate_ratio.r1 == 1 && server_rate_ratio.r2 == 0 && server_rate_ratio.r3 == 0))
+    {
+        SR_avg = 1.0;
+    }
+    else if ((server_rate_ratio.r1 == 1 && server_rate_ratio.r2 == 1 && server_rate_ratio.r3 == 0))
+    {
+        SR_avg = (1.0 + 2.0) / 2;
+    }
+    else if ((server_rate_ratio.r1 == 5 && server_rate_ratio.r2 == 3 && server_rate_ratio.r3 == 2))
+    {
+        SR_avg = (1.0 * 5 + 2.0 * 3 + 1.0 * 2) / 10;
+    }
+
+    ServerHelper serverHelper(server_port,
+                              server_rate_ratio,
+                              server_tqs,
+                              algorithm,
+                              f_tqs_dynamic,
+                              SR_avg);
     ApplicationContainer server_apps = serverHelper.Install(serverNodes);
     // Print server information log
     std::cout << "==== Server information ====" << std::endl;

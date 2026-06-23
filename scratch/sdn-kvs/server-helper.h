@@ -39,7 +39,12 @@ class ServerHelper
      * \param tqs Server TQS
      * \param algorithm The scheduling algorithm running on the server
      */
-    ServerHelper(uint16_t port, ServerRateRatio ratio, uint32_t tqs, SchedulingType algorithm);
+    ServerHelper(uint16_t port,
+                 ServerRateRatio ratio,
+                 uint32_t tqs,
+                 SchedulingType algorithm,
+                 uint32_t f_tqs_dynamic,
+                 double SR_avg);
 
     /**
      * Record an attribute to be set in each Application after it is is created.
@@ -73,6 +78,7 @@ class ServerHelper
     ObjectFactory m_factory;                         //!< Object factory.
     Ptr<Server> m_server;                            //!< The last created server application
     ServerRateRatio m_server_rate_ratio = {1, 0, 0}; //!< Server rate ratio
+    double m_server_rate_avg;
 };
 
 #endif

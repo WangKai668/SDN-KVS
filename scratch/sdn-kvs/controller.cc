@@ -4,37 +4,45 @@
 #include <ns3/internet-module.h>
 #include <ns3/network-module.h>
 
+#include <cstring>
 #include <sstream>
 
+// 定义日志组件和注册Controller类
 NS_LOG_COMPONENT_DEFINE("Controller");
 NS_OBJECT_ENSURE_REGISTERED(Controller);
 
+// 构造函数
 Controller::Controller()
 {
 }
 
+// 析构函数
 Controller::~Controller()
 {
 }
 
+// 资源释放函数，调用父类的DoDispose
 void
 Controller::DoDispose()
 {
     OFSwitch13Controller::DoDispose();
 }
 
+// 设置SDN-KVS功能是否启用
 void
 Controller::SetSdnKvsEnabled(bool sdn_kvs_enabled)
 {
     m_sdn_kvs_enabled = sdn_kvs_enabled;
 }
 
+// 设置调试模式
 void
 Controller::SetDebug(bool debug)
 {
     m_debug = debug;
 }
 
+// 获取TypeId，注册属性和父类信息
 TypeId
 Controller::GetTypeId()
 {
@@ -51,10 +59,21 @@ Controller::GetTypeId()
                                           "Map<client id, client node>. Storing all client nodes.",
                                           ObjectMapValue(),
                                           MakeObjectMapAccessor(&Controller::m_clientNodes),
-                                          MakeObjectMapChecker<Node>());
+                                          MakeObjectMapChecker<Node>())
+                            .AddAttribute("m_eta",
+                                          "A.",
+                                          DoubleValue(2.0),
+                                          MakeDoubleAccessor(&Controller::m_eta),
+                                          MakeDoubleChecker<double>())
+                            .AddAttribute("MinQ",
+                                          "A.",
+                                          UintegerValue(2),
+                                          MakeUintegerAccessor(&Controller::m_minQ),
+                                          MakeUintegerChecker<uint32_t>());
     return tid;
 }
 
+// 握手成功回调，初始化调度上下文并配置交换机
 void
 Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
 {
@@ -63,36 +82,40 @@ Controller::HandshakeSuccessful(Ptr<const RemoteSwitch> swtch)
         std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Handshake successfully"
                   << std::endl;
     }
-    // Initialize the schedule context
+    // 初始化每个服务器的调度上下文
     uint32_t server_num = m_serverNodes.size();
     for (uint32_t i = 0; i < server_num; i++)
     {
         ScheduleContext context;
-        context.is_heavy = false;
-        context.lastScheduleTime = Simulator::Now();
-        context.queue_size = 0;
-        context.server_rate = 0;
-        context.server_tqs = 0;
-        context.schedulePackets = std::vector<SchedulePacket>();
-        context.undoFlowEvents[1] = EventId();
+        context.is_heavy = false;                                // 初始不超载
+        context.lastScheduleTime = Simulator::Now();             // 记录当前时间
+        context.queue_size = 0;                                  // 队列长度
+        context.server_rate = 0;                                 // 服务速率
+        context.server_tqs = 0;                                  // 服务阈值
+        context.schedulePackets = std::vector<SchedulePacket>(); // 初始化调度包队列
+        context.undoFlowEvents[1] = EventId();                   // 撤销事件
         context.undoFlowEvents[2] = EventId();
         m_scheduleContexts[i] = context;
     }
+    // 配置交换机流表
     ConfigureSwitch(swtch);
 }
 
+// 添加服务器节点到映射表
 void
 Controller::AddToServerNodeMap(uint32_t server_id, Ptr<Node> server_node)
 {
     m_serverNodes.insert(std::pair<uint32_t, Ptr<Node>>(server_id, server_node));
 }
 
+// 添加客户端节点到映射表
 void
 Controller::AddToClientNodeMap(uint32_t client_id, Ptr<Node> client_node)
 {
     m_clientNodes.insert(std::pair<uint32_t, Ptr<Node>>(client_id, client_node));
 }
 
+// 处理Packet-In消息的主入口
 ofl_err
 Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
                            Ptr<const RemoteSwitch> swtch,
@@ -100,12 +123,14 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
 {
     enum ofp_packet_in_reason reason = msg->reason;
 
+    // 打印收到的Packet-In消息内容
     char* msgStr = ofl_structs_match_to_string((struct ofl_match_header*)msg->match, nullptr);
     std::cout << "[Controller][" << Simulator::Now().As(Time::S)
               << "] Received Packet-In packet: " << msgStr << " from switch " << swtch->GetDpId()
               << std::endl;
     free(msgStr);
 
+    // 只处理因动作触发的Packet-In
     if (reason == OFPR_ACTION)
     {
         Ptr<Packet> packet = Create<Packet>(msg->data, msg->data_length); // Copy buffer to packet
@@ -141,6 +166,7 @@ Controller::HandlePacketIn(struct ofl_msg_packet_in* msg,
     return 0;
 }
 
+// 配置交换机流表
 void
 Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
 {
@@ -172,6 +198,7 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
     uint32_t server_num = m_serverNodes.size();
     uint32_t port_cnt = 0; // Count the number of ports on the switch
 
+    // 为每个客户端添加流表项
     for (uint32_t i = 0; i < client_num; i++)
     {
         std::stringstream ss;
@@ -187,6 +214,7 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
            << "eth_type=0x0800,ip_dst=" << ip_dst << " apply:nw_dec,output=" << port;
         DpctlExecute(swDpId, ss.str());
     }
+    // 为每个服务器添加流表项
     for (uint32_t i = 0; i < server_num; i++)
     {
         std::stringstream ss;
@@ -210,13 +238,13 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
            << "eth_type=0x0800,ip_dst=" << ip_dst << " apply:nw_dec,output=" << port;
         DpctlExecute(swDpId, ss.str());
     }
-    // Miss match packets will be sent to the other switch,
-    // which is connected to the last port.
+    // 未命中流表的包转发到对端交换机（最后一个端口）
     std::stringstream ss;
     ss << "flow-mod cmd=add,table=0,prio=0 apply:output=" << (++port_cnt);
     DpctlExecute(swDpId, ss.str());
 
-    m_switchPortCnt[swDpId - 1] = port_cnt; // Store switch total port count
+    // 记录该交换机的端口总数
+    m_switchPortCnt[swDpId - 1] = port_cnt;
 
     if (m_debug)
     {
@@ -225,15 +253,16 @@ Controller::ConfigureSwitch(Ptr<const RemoteSwitch> swtch)
     }
 }
 
+// BP-LPT调度算法实现，返回调度顺序
 std::vector<uint32_t>
 Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
 {
-    // Log the controller queue size
+    // 统计控制器队列中所有key的数量
     uint32_t ctrl_queue_siz = 0;
     for (const auto& [server_id, ctx] : m_scheduleContexts)
         for (const auto& pkt : ctx.schedulePackets)
             ctrl_queue_siz += pkt.sdnKvsHeader.GetKsSiz();
-    // Print log
+    // 打印调度请求信息
     uint32_t tot_key_num = 0;
     std::stringstream ss;
     ss << "[";
@@ -249,6 +278,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
               << ", tot_key_num=" << tot_key_num << ", ctrl_queue_siz=" << ctrl_queue_siz
               << "): " << ss.str() << std::endl;
 
+    // 初始化请求集合和权重映射
     std::vector<uint32_t> ret;
     std::set<uint32_t> req_set;
     std::map<uint32_t, double> req_weight;
@@ -258,6 +288,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         req_weight[req.req_id] = req.weight;
     }
 
+    // 打印调试信息
     if (m_debug)
     {
         ss.str("");
@@ -269,14 +300,17 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
                   << "] [Schedule Debug] Server context: " << ss.str() << std::endl;
     }
 
-    uint32_t turn_cnt = 0; // For debug
+    uint32_t turn_cnt = 0; // 调度轮数
+    // 主循环：每次选择瓶颈服务器，选出最优请求
     while (!req_set.empty())
     {
+        // 小根堆，按value升序排列，value=weight/kv
         std::priority_queue<std::pair<double, uint32_t>,
                             std::vector<std::pair<double, uint32_t>>,
                             std::greater<std::pair<double, uint32_t>>>
             q; // <value, req_id>
 
+        // 找到当前瓶颈服务器
         uint32_t sid = FindBottleneckServer(req_set);
         if (m_debug)
         {
@@ -287,6 +321,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
         ss.str("");
         ss << "[";
 
+        // 计算每个请求在该服务器上的value
         for (const auto& req_id : req_set)
         {
             uint32_t kv = SumKeyset(req_id, sid);
@@ -297,6 +332,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
                << ", value=" << val << ")";
             q.push(std::pair<double, uint32_t>(val, req_id));
         }
+        // 选出value最小的请求
         uint32_t target = q.top().second;
 
         ss << "]";
@@ -310,6 +346,7 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
                       << target << std::endl;
         }
 
+        // 更新其他请求的权重
         for (auto& [req_id, weight] : req_weight)
         {
             if (req_id == target)
@@ -318,12 +355,15 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
             uint32_t v2 = SumKeyset(target, sid);
             weight -= (req_weight[target] * v1 / v2);
         }
+        // 将target加入结果，移出集合
         ret.push_back(target);
         req_set.erase(target);
         req_weight.erase(target);
     }
+    // 结果逆序
     std::reverse(ret.begin(), ret.end());
 
+    // 打印最终调度顺序
     ss.str("");
     ss << "[";
     for (const auto& req_id : ret)
@@ -335,46 +375,48 @@ Controller::BP_LPT(std::vector<ScheduleRequest>& scheduleRequests)
     return ret;
 }
 
+// 调度主流程
 void
 Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
                        struct ofl_msg_packet_in* msg,
                        Ptr<const RemoteSwitch> swtch,
                        uint32_t xid)
 {
-    // Log the controller queue size
+    // 统计当前控制器队列中所有key的数量
     uint32_t tot_key_num = 0;
     for (const auto& [server_id, ctx] : m_scheduleContexts)
         for (const auto& pkt : ctx.schedulePackets)
             tot_key_num += pkt.sdnKvsHeader.GetKsSiz();
-    // Print log
+    // 打印收到的包信息
     std::stringstream ss;
     sdnKvsHeader.Print(ss);
     std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] Schedule client packet"
               << ss.str() << "(ctrl_queue_siz=" << tot_key_num << ")" << std::endl;
-    // Get server IP address
+    // 获取目标服务器IP
     ss.str("");
     Ipv4Address serverIp = ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)msg->match);
     ss << serverIp;
 
-    // Build schedule packet
+    // 构造调度包
     SchedulePacket schedulePacket;
     schedulePacket.id = ++m_idCnt;
     schedulePacket.sdnKvsHeader = sdnKvsHeader;
     schedulePacket.msg = msg;
     schedulePacket.swtch = swtch;
     schedulePacket.xid = xid;
-    schedulePacket.arriveTime = Simulator::Now(); // Record arriving time
+    schedulePacket.arriveTime = Simulator::Now(); // 记录到达时间
     schedulePacket.dstServerId = m_ipToServer[ss.str()];
 
-    // Push the schedule packet into the queue
+    // 将调度包加入目标服务器的调度队列
     ScheduleContext& context = m_scheduleContexts[schedulePacket.dstServerId];
     context.schedulePackets.push_back(schedulePacket);
 
-    std::map<uint32_t, int64_t> req_wait_time; // Map<request id, max wait time>
-    std::map<uint32_t, uint32_t> req_key_num;  // Map<request id, tot key num>
+    // 统计每个请求的最大等待时间和key总数
+    std::map<uint32_t, int64_t> req_wait_time; // <请求id, 最大等待时间>
+    std::map<uint32_t, uint32_t> req_key_num;  // <请求id, key总数>
     for (auto& [server_id, ctx] : m_scheduleContexts)
     {
-        if (!ctx.is_heavy) // Not overloaded
+        if (!ctx.is_heavy) // 只处理超载服务器
             continue;
         int64_t dt = Simulator::Now().GetMilliSeconds() - ctx.lastScheduleTime.GetMilliSeconds();
         if (dt >= 1.00) // 1ms is the minimum delta time.
@@ -401,24 +443,25 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
 
     // Waiting for the scheduling requests list. Sorted in scheduling.
     std::vector<ScheduleRequest> scheduleRequests;
-    // Build request list
     for (const auto& [req_id, wait_time] : req_wait_time)
     {
         ScheduleRequest scheduleRequest;
         scheduleRequest.req_id = req_id;
-        scheduleRequest.weight = 1.0 + 2.0 * wait_time;
+        // scheduleRequest.weight = 1.0 + 2.0 * wait_time; // 权重计算方式
+        scheduleRequest.weight = std::min(1.0 + 5.0 * wait_time / 1000, m_eta);
         scheduleRequest.key_num = req_key_num[req_id];
         scheduleRequests.push_back(scheduleRequest);
     }
-    // Do BP-LPT algorithm
+    // 调用BP-LPT算法获得调度顺序
     std::vector<uint32_t> sortedReuests = BP_LPT(scheduleRequests);
 
+    // 构建请求id到包指针的快照映射，以及每台服务器的key统计
     std::map<uint32_t, std::vector<SchedulePacket*>> pktSnapshot;
     std::map<uint32_t, uint32_t> ksStat; // Map<server id, the number of keys>
     // Prebuild packet snapshot data structure
     for (auto& [server_id, ctx] : m_scheduleContexts)
     {
-        uint32_t ks_sum = 0; // Log the number of keys for each servers
+        uint32_t ks_sum = 0; // 统计每台服务器的key数
         for (auto& pkt : ctx.schedulePackets)
         {
             uint32_t req_id = pkt.sdnKvsHeader.GetReqId();
@@ -430,6 +473,7 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
         ksStat[server_id] = ks_sum;
     }
 
+    // 打印服务器key统计信息
     if (m_debug)
     {
         ss.str("");
@@ -450,37 +494,73 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
     // dt = queue_size / server_rate + base_value * base_count. Here base_value=0.005ms
     for (uint32_t i = 0; i < m_serverNodes.size(); i++)
         dt_base[i] = 0, cur_ks_siz[i] = 0;
+    // 按调度顺序遍历每个请求
+    // 遍历排序后的请求ID列表，按照BP-LPT算法得到的调度顺序依次处理每个请求
     for (const auto& req_id : sortedReuests)
     {
+        // 对于每个请求，遍历其对应的所有待调度数据包指针
         for (const auto& pkt : pktSnapshot[req_id])
         {
-            // Log SDN-KVS header information
+            // 清空字符串流，用于打印包头信息
             ss.str("");
+            // 打印当前包的SDN-KVS头部信息到字符串流
             pkt->sdnKvsHeader.Print(ss);
 
-            Time dt;
+            Time dt; // 记录当前包的调度发送时间
+            // 获取该包目标服务器的调度上下文
             ScheduleContext& ctx = m_scheduleContexts[pkt->dstServerId];
-            if (cur_ks_siz[pkt->dstServerId] > ctx.server_tqs)
+
+            // // 判断当前服务器的key数是否超过该服务器的阈值（server_tqs）
+            // if (cur_ks_siz[pkt->dstServerId] >
+            //     ctx.server_tqs) // modify by wangkai  ctx.server_tqs  m_minQ
+            // {
+            //     // 如果超过阈值，重置该服务器的基数（dt_base），用于后续延迟计算
+            //     dt_base[pkt->dstServerId] = 0;
+            //     // 计算超出部分的延迟ddt，包含超出key数/服务速率和基数微小扰动
+            //     Time ddt = Seconds(
+            //         (cur_ks_siz[pkt->dstServerId] - ctx.server_tqs) / (1000.0 * ctx.server_rate)
+            //         + 0.000005 * dt_base[pkt->dstServerId]); // modify by wangkai  ctx.server_tqs
+            //     // 该包的调度时间为上次调度时间加上新计算的延迟
+            //     dt = lst_dt[pkt->dstServerId] + ddt;
+            //     // 更新当前服务器的key数为阈值加上本包的key数
+            //     cur_ks_siz[pkt->dstServerId] =
+            //         ctx.server_tqs +
+            //         pkt->sdnKvsHeader.GetKsSiz(); // modify by wangkai ctx.server_tqs
+            // }
+            // else
+            // {
+            //     // 如果未超过阈值，直接根据队列长度和服务速率计算延迟
+            //     dt = Seconds(std::max(int32_t(ctx.queue_size) - int32_t(ctx.server_tqs), 0) /
+            //                      (1000.0 * ctx.server_rate) +
+            //                  0.000005 * dt_base[pkt->dstServerId]);
+            //     // modify by wangkai
+            //     //  dt = Seconds(std::max(int32_t(ctx.queue_size) - int32_t(ctx.server_tqs), 0) /
+            //     //                   (1000.0 * ctx.server_rate) +
+            //     //               0.000005 * dt_base[pkt->dstServerId]);
+            //     //  累加当前服务器的key数
+            //     cur_ks_siz[pkt->dstServerId] += pkt->sdnKvsHeader.GetKsSiz();
+            // }
+
+            if (cur_ks_siz[pkt->dstServerId] > 0)
             {
-                dt_base[pkt->dstServerId] = 0;
-                Time ddt = Seconds((cur_ks_siz[pkt->dstServerId] - ctx.server_tqs) /
-                                       (1000.0 * ctx.server_rate) +
-                                   0.000005 * dt_base[pkt->dstServerId]);
+                Time ddt = Seconds(cur_ks_siz[pkt->dstServerId] /
+                                   (1000.0 * ctx.server_rate)); // modify by wangkai  ctx.server_tqs
                 dt = lst_dt[pkt->dstServerId] + ddt;
-                cur_ks_siz[pkt->dstServerId] = ctx.server_tqs + pkt->sdnKvsHeader.GetKsSiz();
+                cur_ks_siz[pkt->dstServerId] = pkt->sdnKvsHeader.GetKsSiz();
             }
             else
             {
-                dt = Seconds(std::max(int32_t(ctx.queue_size) - int32_t(ctx.server_tqs), 0) /
-                                 (1000.0 * ctx.server_rate) +
-                             0.000005 * dt_base[pkt->dstServerId]);
-                cur_ks_siz[pkt->dstServerId] += pkt->sdnKvsHeader.GetKsSiz();
+                dt = Seconds(std::max(int32_t(ctx.queue_size) - int32_t(m_minQ), 0) /
+                             (1000.0 * ctx.server_rate));
+                cur_ks_siz[pkt->dstServerId] = pkt->sdnKvsHeader.GetKsSiz();
             }
 
+            // 基数自增，用于下一个包的扰动项
             dt_base[pkt->dstServerId] += 1;
+            // 记录该服务器上次调度的时间
             lst_dt[pkt->dstServerId] = dt;
 
-            // Remove send event set before
+            // 如果该包之前已经安排了发送事件，则先取消之前的事件，避免重复发送
             if (pkt->eventId.IsRunning())
             {
                 if (m_debug)
@@ -491,8 +571,10 @@ Controller::DoSchedule(SdnKvsHeader& sdnKvsHeader,
                 }
                 pkt->eventId.Cancel();
             }
-            // Set send event
-            pkt->eventId = Simulator::Schedule(dt, &Controller::RemovePacketAndForward, this, *pkt);
+            // 安排新的发送事件，将包在dt时间后发送到目标服务器
+            pkt->eventId =
+                Simulator::Schedule(dt, &Controller::RemovePacketAndForward, this, *pkt, req_id);
+            // 如果开启调试，打印调度信息
             if (m_debug)
             {
                 std::cout << "[Controller][" << Simulator::Now().As(Time::S)
@@ -560,18 +642,37 @@ Controller::DoFlowModify(SdnKvsHeader& sdnKvsHeader,
         }
 
         // Set timer to undo modification.
-        Time dt = Seconds(1.0 * (std::max(0, int32_t(sdnKvsHeader.GetQueueSiz()) - 5)) /
-                          (1000.0 * sdnKvsHeader.GetServerRate()));
+        // modify by wangkai 流表恢复写到出队的时候，如果当前队列小于minQ，就恢复
+        Time dt =
+            Seconds(1.0 * (std::max(0, int32_t(sdnKvsHeader.GetQueueSiz()) - int32_t(m_minQ))) /
+                    (1000.0 * sdnKvsHeader.GetServerRate())); // Equation (1)    Mq=5
         std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] " << dt.As(Time::S)
                   << " later will undo the modification of the flow table" << std::endl;
+
+        // std::cout << "[Controller] Set undoFlowEventsFlag for (swDpId=" << swDpId
+        //           << ", serverIp=" << serverIp_str << ")" << std::endl;
+        undoFlowEventsFlag[std::make_pair(uint32_t(swDpId), serverIp_str)] = 0;
+        // 打印所有的undoFlowEventsFlag
+        // for (const auto& kv : undoFlowEventsFlag)
+        // {
+        //     std::cout << "  (swDpId=" << kv.first.first << ", serverIp=" << kv.first.second
+        //               << ") = " << kv.second << std::endl;
+        // }
+
         ctx.undoFlowEvents[swDpId] =
-            Simulator::Schedule(dt, &Controller::UndoFlowModify, this, swDpId, serverIp_str);
+            Simulator::Schedule(dt, &Controller::UndoFlowModifyFlag, this, swDpId, serverIp_str);
     }
     // Forward packet to client
     if (sdnKvsHeader.GetId() != 0)
         ForwardPacket(msg, swtch, xid);
     // Free message after forwarding packet
     ofl_msg_free((struct ofl_msg_header*)msg, nullptr);
+}
+
+void
+Controller::UndoFlowModifyFlag(uint32_t switch_id, std::string server_ip)
+{
+    undoFlowEventsFlag[std::make_pair(switch_id, server_ip)] = 1;
 }
 
 void
@@ -595,7 +696,7 @@ Controller::UndoFlowModify(uint32_t switch_id, std::string server_ip)
 }
 
 void
-Controller::RemovePacketAndForward(SchedulePacket pkt)
+Controller::RemovePacketAndForward(SchedulePacket pkt, uint32_t req_id)
 {
     // Remove packet from schdule list
     ScheduleContext& ctx = m_scheduleContexts[pkt.dstServerId];
@@ -604,17 +705,53 @@ Controller::RemovePacketAndForward(SchedulePacket pkt)
     if (it != ctx.schedulePackets.end())
         ctx.schedulePackets.erase(it);
 
+    uint64_t tot_key_num_server = 0;
+    for (const auto& pkt : ctx.schedulePackets)
+        tot_key_num_server += pkt.sdnKvsHeader.GetKsSiz();
+
     // Log the controller queue size
     uint32_t tot_key_num = 0;
     for (const auto& [server_id, ctx] : m_scheduleContexts)
         for (const auto& pkt : ctx.schedulePackets)
             tot_key_num += pkt.sdnKvsHeader.GetKsSiz();
+
     // Print log
     std::stringstream ss;
     pkt.sdnKvsHeader.Print(ss);
     std::cout << "[Controller][" << Simulator::Now().As(Time::S)
               << "] Forward packet(pkt_id=" << pkt.id << ")" << ss.str() << " to the server "
               << pkt.dstServerId << " (ctrl_queue_siz=" << tot_key_num << ")" << std::endl;
+
+    if (tot_key_num_server < m_minQ)
+    {
+        Ipv4Address serverIp =
+            ExtractIpv4Address(OXM_OF_IPV4_DST, (struct ofl_match*)pkt.msg->match);
+        std::stringstream ip_ss;
+        ip_ss << serverIp;
+        std::string serverIp_str = ip_ss.str();
+
+        uint64_t swDpId = pkt.swtch->GetDpId();
+
+        // for (const auto& kv : undoFlowEventsFlag)
+        // {
+        //     std::cout << "  (swDpId=" << kv.first.first << ", serverIp=" << kv.first.second
+        //               << ") = " << kv.second << std::endl;
+        // }
+        // Only undo if already done
+        std::cout << "[Controller][" << Simulator::Now().As(Time::S) << "] "
+                  << " shadow queue drains. undo the modification of the flow table"
+                  << " (SumKeyset=" << tot_key_num_server << ", req_id=" << req_id
+                  << ", dstServerId=" << pkt.dstServerId << ", swDpId=" << swDpId
+                  << ", serverIp_str=" << serverIp_str << ")" << std::endl;
+        //<< " undoFlag=" << undoFlowEventsFlag[std::make_pair(uint32_t(swDpId), serverIp_str)]
+        auto key = std::make_pair(uint32_t(swDpId), serverIp_str);
+        auto it = undoFlowEventsFlag.find(key);
+        if (it != undoFlowEventsFlag.end() && it->second == int32_t(1))
+        {
+            UndoFlowModify(swDpId, serverIp_str);
+            undoFlowEventsFlag[std::make_pair(uint32_t(swDpId), serverIp_str)] = 0;
+        }
+    }
 
     // Forward packet to the server
     ForwardPacket(pkt.msg, pkt.swtch, pkt.xid);
@@ -656,6 +793,7 @@ Controller::ForwardPacket(struct ofl_msg_packet_in* msg,
     reply.data = msg->data;
 
     int ret = SendToSwitch(swtch, (struct ofl_msg_header*)&reply, xid);
+
     std::cout << "[Controller][" << Simulator::Now().As(Time::S)
               << "] Sent Packet-Out packet: (buffer_id=" << reply.buffer_id
               << ", in_port=" << reply.in_port << ", out_port=" << action->port << ") to switch "

@@ -34,9 +34,7 @@ option(NS3_CLANG_TIMETRACE
        "Collect compilation statistics to analyze the build process" OFF
 )
 option(NS3_COLORED_OUTPUT "Colorize CMake messages" OFF)
-option(NS3_COVERAGE "Enable code coverage measurements and report generation"
-       OFF
-)
+option(NS3_COVERAGE "Enable code coverage measurements and report generation" OFF)
 option(NS3_COVERAGE_ZERO_COUNTERS
        "Zero lcov counters before running. Requires NS3_COVERAGE=ON" OFF
 )

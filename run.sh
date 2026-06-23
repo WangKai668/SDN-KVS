@@ -3,7 +3,7 @@ algorithm=0
 # Enable DEBUG log
 debug=false
 # Whether there is a hotspot server
-ifZipfian=false
+ifZipfian=true
 # The distribution type for generating key(0: POSSION, 1: PARETO)
 distribution_type=0
 # The keyset size type(0: LIGHT, 1: HEAVY)
@@ -17,15 +17,18 @@ simTime=1000
 # Server rate ratio. (Server rate: number of keys processed per millisecond)
 server_rate_ratio=1:0:0
 # Server TQS
-server_tqs=64
+server_tqs=6
 # The number of client node
-client_num=15
+client_num=50
 # The number of server node
-server_num=15
+server_num=50
 # The upper bound of the total number of keys(n keys = 1 keyset)
-key_num=50000
+key_num=150000
 
-while getopts "a:c:s:k:x:y:z:u:t:dq:r:h" arg
+tqs_dynamic=0
+latency=600
+
+while getopts "a:c:s:k:x:y:z:u:t:dq:r:hl:" arg
 do
     case $arg in
         a)
@@ -67,6 +70,9 @@ do
         h)
             ifZipfian=true
             ;;
+        l)   
+            latency=$OPTARG
+            ;;    
         ?)
             exit 1
             ;;
@@ -78,15 +84,31 @@ if [ $send_time_type = 1 ]; then
     uti=1.0
 fi
 if [ $ifZipfian = true ]; then
-    echo "c=${client_num}, s=${server_num}, k=${key_num}, r=${server_rate_ratio}, x=${distribution_type}, y=${keyset_size_type}, z=${send_time_type}, h, u=${uti}, a=${algorithm}, q=${server_tqs}"
+    echo "c=${client_num}, s=${server_num}, k=${key_num}, r=${server_rate_ratio}, x=${distribution_type}, y=${keyset_size_type}, z=${send_time_type}, h, u=${uti}, a=${algorithm}, q=${server_tqs}, l${latency}"
 else
-    echo "c=${client_num}, s=${server_num}, k=${key_num}, r=${server_rate_ratio}, x=${distribution_type}, y=${keyset_size_type}, z=${send_time_type}, u=${uti}, a=${algorithm}, q=${server_tqs}"
+    echo "c=${client_num}, s=${server_num}, k=${key_num}, r=${server_rate_ratio}, x=${distribution_type}, y=${keyset_size_type}, z=${send_time_type}, u=${uti}, a=${algorithm}, q=${server_tqs}, l${latency}"
 fi
-echo
+echo "latency = ${latency}ns"
 
 ./ns3 configure -d optimized 2>&1 >/dev/null
 ./ns3 build > output.log 2>&1
-./ns3 run "scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --send_time_type=${send_time_type} --uti=${uti} --simTime=${simTime} --server_rate_ratio=${server_rate_ratio} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num}" > output.log 2>&1
-if [ $? -eq 0 ]; then
-    python3 ./analysis.py output.log
+
+output_file="results/output_c${client_num}_s${server_num}_k${key_num}_r${server_rate_ratio}_x${distribution_type}_y${keyset_size_type}_z${send_time_type}_u${uti}_a${algorithm}_q${server_tqs}_l${latency}"
+
+if [ "$ifZipfian" = true ]; then
+    output_file="${output_file}_h"
 fi
+output_file="${output_file}.log"
+
+if [ "$server_tqs" = "999" ]; then
+    tqs_dynamic=1
+fi
+
+(
+    ./ns3 run "scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --send_time_type=${send_time_type} --uti=${uti} --simTime=${simTime} --server_rate_ratio=${server_rate_ratio} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num} --tqs_dynamic=${tqs_dynamic} --network_latency=${latency}" > "$output_file" 2>&1 
+    # if [ $? -eq 0 ]; then
+    #     python3 ./analysis.py "$output_file"
+    # fi
+) &
+
+sleep 0.5

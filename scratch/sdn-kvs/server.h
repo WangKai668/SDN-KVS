@@ -122,7 +122,19 @@ class Server : public Application
     uint32_t m_server_rate; //!< Server handle rate. (Number of keys processed per millisecond)
     uint32_t m_queue_size;  //!< Current server queue size
     uint32_t m_tqs;         //!< Server TQS
-    int64_t m_lst;          //!< Last time to update queue size
+    double m_tqs_dynamic = 6.0;
+    double m_queue_size_avg = 0;
+    double m_queue_size_max = 1;
+    uint32_t f_tqs_dynamic; // 是否启用动态TQs
+    double m_SR_avg;
+    double m_util_avg_long = 0.1;
+    double m_util_avg_short = 0.1;
+    uint32_t m_queue_size_last = 0;
+    uint32_t m_queue_out = 0;
+    uint32_t deltaT = 40;
+
+    int64_t m_lst; //!< Last time to update queue size
+    int64_t m_maxq_lst;
 
     bool m_srpt_enabled;    //!< Whether SRPT algorithm is enabled on the server
     bool m_sbf_enabled;     //!< Whether SBF algorithm is enabled on the server
