@@ -1,5 +1,9 @@
 import re
 import os
+from pathlib import Path
+
+
+RESULTS_DIR = Path(os.environ.get("SDN_KVS_RESULTS_DIR") or "/mnt/nasDisk_ds3617/wangkai/SDN-KVS")
 
 def extract_metrics_from_file(content):
     # 定义算法顺序和对应的正则表达式模式
@@ -93,5 +97,10 @@ file_list = [
 ]
 
 # 处理所有文件
-output_file = 'results_tqs_origin.txt'
-process_all_files(file_list, output_file)
+if __name__ == "__main__":
+    if not RESULTS_DIR.is_dir():
+        raise SystemExit(f"结果目录不存在 {RESULTS_DIR}")
+    process_all_files(
+        [RESULTS_DIR / name for name in file_list],
+        RESULTS_DIR / "results_tqs_origin.txt",
+    )

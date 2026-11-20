@@ -1,5 +1,9 @@
 import re
 import os
+from pathlib import Path
+
+
+RESULTS_DIR = Path(os.environ.get("SDN_KVS_RESULTS_DIR") or "/mnt/nasDisk_ds3617/wangkai/SDN-KVS")
 
 def extract_metrics(content):
     algorithms = ['FIFO', 'SRPT', 'SBF', 'DAS', 'SDN-KVS']
@@ -32,7 +36,7 @@ def process_util_files(file_list, output_file):
     # 按场景分类文件
     scenes = {}
     for file_path in file_list:
-        match = re.search(r'scene\[(\d+)\].*_u([\d.]+)_', file_path)
+        match = re.search(r'scene\[(\d+)\].*_u([\d.]+)_', file_path.name)
         if match:
             scene = int(match.group(1))
             util = float(match.group(2))
@@ -100,7 +104,7 @@ def process_latency_files(file_list, output_file):
     scenes = {}
     for file_path in file_list:
         # 匹配scene和latency
-        match = re.search(r'scene\[(\d+)\].*_l(\d+)_', file_path)
+        match = re.search(r'scene\[(\d+)\].*_l(\d+)(?:_h)?\.log$', file_path.name)
         if match:
             scene = int(match.group(1))
             latency = int(match.group(2))
@@ -162,32 +166,16 @@ def process_latency_files(file_list, output_file):
 
     print(f"All results saved to {output_file}")
 
-# # # 需要特殊处理的latency文件列表
-# latency_files = [
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l600_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l1000_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l2500_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l5000_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l10000_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l50000_h.log',
-#     'result_util_scene[1]_c32_s32_k150000_r1:0:0_x0_y0_z0_u0.7_q64_l100000_h.log',
-# ]
+if __name__ == "__main__":
+    if not RESULTS_DIR.is_dir():
+        raise SystemExit(f"结果目录不存在 {RESULTS_DIR}")
 
-# # 处理latency文件并输出到单个文件
-# output_file = 'results_latency_origin.tsv'
-# process_latency_files(latency_files, output_file)
+    latency_files = sorted(RESULTS_DIR.glob("result_latency_scene*.log"))
+    util_files = sorted(RESULTS_DIR.glob("result_util_scene*.log"))
 
-# # 需要特殊处理的util文件列表
-util_files = [
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.4_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.5_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.6_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.71_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.8_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u0.9_q64_h.log',
-    'result_util_scene[2]_c32_s32_k150000_r1:1:0_x0_y0_z0_u1_q64_h.log',
-]
-
-# 处理util文件并输出到单个文件
-output_file = 'results_util_origin.tsv'
-process_util_files(util_files, output_file)
+    if latency_files:
+        process_latency_files(latency_files, RESULTS_DIR / "results_latency_origin.tsv")
+    if util_files:
+        process_util_files(util_files, RESULTS_DIR / "results_util_origin.tsv")
+    if not latency_files and not util_files:
+        raise SystemExit(f"没有找到延迟或利用率分析日志 {RESULTS_DIR}")

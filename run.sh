@@ -1,3 +1,9 @@
+SDN_KVS_RESULTS_DIR="${SDN_KVS_RESULTS_DIR:-/mnt/nasDisk_ds3617/wangkai/SDN-KVS}"
+if [[ ! -d "$SDN_KVS_RESULTS_DIR" ]]; then
+    printf '结果目录不存在 %s\n' "$SDN_KVS_RESULTS_DIR" >&2
+    exit 1
+fi
+
 # Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)
 algorithm=0
 # Enable DEBUG log
@@ -93,7 +99,7 @@ echo "latency = ${latency}ns"
 ./ns3 configure -d optimized 2>&1 >/dev/null
 ./ns3 build > output.log 2>&1
 
-output_file="results/output_c${client_num}_s${server_num}_k${key_num}_r${server_rate_ratio}_x${distribution_type}_y${keyset_size_type}_z${send_time_type}_u${uti}_a${algorithm}_q${server_tqs}_l${latency}"
+output_file="${SDN_KVS_RESULTS_DIR}/output_c${client_num}_s${server_num}_k${key_num}_r${server_rate_ratio}_x${distribution_type}_y${keyset_size_type}_z${send_time_type}_u${uti}_a${algorithm}_q${server_tqs}_l${latency}"
 
 if [ "$ifZipfian" = true ]; then
     output_file="${output_file}_h"

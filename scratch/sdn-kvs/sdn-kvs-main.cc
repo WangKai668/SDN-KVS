@@ -334,8 +334,8 @@ init_request_table(NodeContainer& serverNodes)
             entry.dst_ip = ss.str();
             entry.dst_port = server_port;
             entry.req_id = req_id;
-            entry.ks_siz = ks_siz * 1;
-            entry.bottleneck_ks_size = bottleneck_keyset * 1;
+            entry.ks_siz = ks_siz * 10; // modify by wangkai 小规模场景（8~13均设置为*1）
+            entry.bottleneck_ks_size = bottleneck_keyset * 10; // modify by wangkai 小规模场景（8~13均设置为*1）
             entry.is_heavy = is_heavy;
 
             // Record this entry to the temporary vector
