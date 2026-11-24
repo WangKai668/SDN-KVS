@@ -1,10 +1,12 @@
 #ifndef CONTROLLER_H
 #define CONTROLLER_H
 
+#include "controller-overhead.h"
 #include "sdn-kvs-header.h"
 
 #include <ns3/ofswitch13-module.h>
 
+#include <optional>
 #include <stack>
 using namespace ns3;
 
@@ -18,6 +20,9 @@ class Controller : public OFSwitch13Controller
     ~Controller() override; //!< Dummy destructor.
     void SetSdnKvsEnabled(bool sdn_kvs_enabled);
     void SetDebug(bool debug);
+    enum class Ranking { BpLpt, Srpt, Sbf, CentralSbf };
+    void SetRanking(Ranking ranking) { m_ranking = ranking; }
+    void SetRequestBottleneck(uint32_t requestId, uint32_t size);
     /** Destructor implementation */
     void DoDispose() override;
 
@@ -46,8 +51,18 @@ class Controller : public OFSwitch13Controller
   protected:
     // Inherited from OFSwitch13Controller
     void HandshakeSuccessful(Ptr<const RemoteSwitch> swtch) override;
+    void NotifyFlowModSubmitted() override;
 
   private:
+    Ranking m_ranking = Ranking::BpLpt;
+    struct CentralSbfRequest
+    {
+        uint32_t bottleneckSize;
+        std::optional<Time> firstArrival;
+    };
+    std::map<uint32_t, CentralSbfRequest> m_centralSbfRequests;
+    ControllerOverhead::FlowUpdate m_flowUpdate = ControllerOverhead::FlowUpdate::None;
+
     /**
      * Structure of packet waiting for forwarding to the server.
      * It is saved temporarily in the scheduling context.

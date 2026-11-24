@@ -1,0 +1,4 @@
+central-srpt-keyset-smoke,8,4,64,600,1,1701,bp-lpt,output_c8_s8_k30000_r1:0:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_bp-lpt.log
+central-srpt-keyset-smoke,8,4,64,600,1,1701,central-sbf,output_c8_s8_k30000_r1:0:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_central-sbf.log
+central-srpt-keyset-smoke,8,4,64,600,1,1701,srpt,output_c8_s8_k30000_r1:0:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_srpt.log
+central-srpt-keyset-smoke,9,4,64,600,1,1701,srpt,output_c8_s8_k30000_r1:1:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_srpt.log

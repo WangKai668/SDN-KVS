@@ -507,4 +507,5 @@ def parse(file_path: str):
     print_result()
 
 # 程序入口，传入日志文件路径
-parse(sys.argv[1])
+if __name__ == "__main__":
+    parse(sys.argv[1])

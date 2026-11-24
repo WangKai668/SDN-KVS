@@ -1,0 +1,3 @@
+output_c8_s8_k30000_r1:0:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_bp-lpt unique queued and forwarded: 740 rankings: 0 multi-request: 0 size ties with distinct time: 0 time and size ties: 0 scheduled entries with keyset smaller than full bottleneck: 0
+output_c8_s8_k30000_r1:0:0_x0_y0_z0_u0.7_a4_q64_l600_h_run1_seed1701_central-sbf unique queued and forwarded: 737 rankings: 737 multi-request: 735 size ties with distinct time: 595 time and size ties: 0 scheduled entries with keyset smaller than full bottleneck: 11586
+Paired inputs, rates and full completion confirmed. 378 378

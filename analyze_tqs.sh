@@ -1,14 +1,47 @@
+if [[ "${1:-}" == --study || "${1:-}" == --central-sbf ]]; then
+    if [[ $# != 2 ]]; then
+        printf 'Usage: bash analyze_tqs.sh {--study|--central-sbf} RESULTS_DIRECTORY\n' >&2
+        exit 2
+    fi
+    if [[ "$1" == --central-sbf ]]; then
+        exec python3.12 analyze_sdn_kvs_study.py --central-sbf "$2"
+    fi
+    exec python3.12 analyze_sdn_kvs_study.py "$2"
+fi
+
+if [[ "${1:-}" == --statistics ]]; then
+    if [[ $# != 2 ]]; then
+        printf 'Usage: bash analyze_tqs.sh --statistics RESULTS_DIRECTORY\n' >&2
+        exit 2
+    fi
+    exec python3.12 analyze_controller_overhead.py --statistics "$2"
+fi
+
+if [[ "${1:-}" == --controller-overhead ]]; then
+    if [[ $# != 2 ]]; then
+        printf 'Usage: bash analyze_tqs.sh --controller-overhead RESULTS_DIRECTORY\n' >&2
+        exit 2
+    fi
+    exec python3.12 analyze_controller_overhead.py "$2"
+fi
+
+SDN_KVS_RESULTS_DIR="${SDN_KVS_RESULTS_DIR:-/mnt/nasDisk_ds3617/wangkai/SDN-KVS}"
+if [[ ! -d "$SDN_KVS_RESULTS_DIR" ]]; then
+    printf '结果目录不存在 %s\n' "$SDN_KVS_RESULTS_DIR" >&2
+    exit 1
+fi
+
 qs=("999" "0" "2" "4" "6" "8" "16" "32" "64" "128" "256" "512" "1024")
 qs=("999" "4" "8" "16" "32" "64" "128" "256" "512" "1024")
 qs=("8" "64" "256" "1024")
 qs=("4" "8" "16" "32" "64" "128" "256" "512" "1024" "2048")
 
 # qs=( "6" "1024")
-# qs=( "8" "64")
+qs=("64")
 
 c=32
 s=32
-for ((i=8; i<=15; i++)); do
+for ((i=14; i<=15; i++)); do
     case $i in
         8)  # 轻尾   同构
             x=0
@@ -90,43 +123,55 @@ for ((i=8; i<=15; i++)); do
 
     (
         if [ $h = true ]; then
-            result_file="result_tqs_scene[$i]_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}_h.log"
+            result_file="${SDN_KVS_RESULTS_DIR}/result_tqs_scene[$i]_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}_h.log"
         else
-            result_file="result_tqs_scene[$i]_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}.log"
+            result_file="${SDN_KVS_RESULTS_DIR}/result_tqs_scene[$i]_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}.log"
         fi   
         
-        echo "TQS变化实验" > ${result_file}
+        echo "TQS变化实验" > "${result_file}" || exit 1
         for ((a=0; a<=4; a++)); do
-            echo "" >> ${result_file}
-            output_file_root="results/output_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}_a${a}"
+            echo "" >> "${result_file}"
+            output_file_root="${SDN_KVS_RESULTS_DIR}/output_c${c}_s${s}_k${k}_r${r}_x${x}_y${y}_z${z}_u${u}_a${a}"
             case $a in
-                0) echo "[Scene $i] FIFO =============================" >> ${result_file};;
-                1) echo "[Scene $i] SRPT =============================" >> ${result_file};;
-                2) echo "[Scene $i] SBF  =============================" >> ${result_file};;
-                3) echo "[Scene $i] DAS  =============================" >> ${result_file};;
-                4) echo "[Scene $i] SDN-KVS ==========================" >> ${result_file};;
+                0) echo "[Scene $i] FIFO =============================" >> "${result_file}";;
+                1) echo "[Scene $i] SRPT =============================" >> "${result_file}";;
+                2) echo "[Scene $i] SBF  =============================" >> "${result_file}";;
+                3) echo "[Scene $i] DAS  =============================" >> "${result_file}";;
+                4) echo "[Scene $i] SDN-KVS ==========================" >> "${result_file}";;
             esac
             if [ $a = 4 ]; then
                 for q in ${qs[@]}; do
                     output_file2="${output_file_root}_q${q}_l600"
-                    echo "**********************  q=${q}  ********************** " >> ${result_file}
+                    echo "**********************  q=${q}  ********************** " >> "${result_file}"
                     if [ $h = true ]; then
                         output_file="${output_file2}_h.log"
-                        (python3 analysis.py $output_file >> ${result_file} ) 
                     else
                         output_file="${output_file2}.log"
-                        (python3 analysis.py $output_file >> ${result_file} ) 
-                    fi   
+                    fi
+                    python3.12 analysis.py "$output_file" >> "${result_file}"
+                    handover_summary=""
+                    if [[ -r "$output_file" ]]; then
+                        handover_summary=$(tail -n "$((s + 20))" -- "$output_file" | awk '
+                            /^=== Handover idle summary \(CSV\) ===$/ { block = $0 ORS; next }
+                            /^=== End handover idle summary ===$/ && block { printf "%s%s", block, $0; exit }
+                            block { block = block $0 ORS }
+                        ')
+                    fi
+                    if [[ -n "$handover_summary" ]]; then
+                        printf '%s\n' "$handover_summary" >> "${result_file}"
+                    else
+                        printf '%s\n' 'Handover idle summary: N/A (no complete statistics block)' >> "${result_file}"
+                    fi
                 done
                 echo $i, $a, $output_file
             else
                 output_file="${output_file_root}_q6_l600"
                 if [ $h = true ]; then
                     output_file="${output_file}_h.log"
-                    (python3 analysis.py $output_file >> ${result_file} ) 
+                    (python3.12 analysis.py "$output_file" >> "${result_file}" )
                 else
                     output_file="${output_file}.log"
-                    (python3 analysis.py $output_file >> ${result_file} ) 
+                    (python3.12 analysis.py "$output_file" >> "${result_file}" )
                 fi
                 echo $i, $a, $output_file
             fi
@@ -134,4 +179,4 @@ for ((i=8; i<=15; i++)); do
     ) &
     sleep 0.5
 done
-
+wait

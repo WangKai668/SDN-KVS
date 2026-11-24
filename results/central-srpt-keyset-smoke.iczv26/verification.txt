@@ -1,0 +1,8 @@
+bp-lpt: send, receive, enqueue, and forward records match after masking client server_tqs; 378/378 requests.
+central-sbf: send, receive, enqueue, and forward records match after masking client server_tqs; 378/378 requests.
+Scene 8: 378/378 requests, 1388 keysets forwarded exactly once.
+{'size_ties': 44742, 'rounds': 1388, 'plan_entries': 100166, 'cross_server_ties': 56072, 'cross_server_holds': 40290}
+Each actual forward matched the head of the most recent pending-keyset plan.
+Scene 9: 378/378 requests, 1258 keysets forwarded exactly once.
+{'size_ties': 89534, 'rounds': 1258, 'plan_entries': 153583, 'cross_server_ties': 80718, 'cross_server_holds': 67728}
+Each actual forward matched the head of the most recent pending-keyset plan.

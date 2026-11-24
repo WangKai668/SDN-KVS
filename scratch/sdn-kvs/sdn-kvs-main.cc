@@ -1,7 +1,9 @@
 #include "client-helper.h"
 #include "controller.h"
+#include "handover-stats.h"
 #include "model.h"
 #include "server-helper.h"
+#include "sdn-kvs-header.h"
 
 #include "ns3/applications-module.h"
 #include "ns3/core-module.h"
@@ -10,10 +12,15 @@
 #include "ns3/internet-module.h"
 #include "ns3/network-module.h"
 #include "ns3/ofswitch13-module.h"
+#include "ns3/udp-header.h"
 
+#include <cstdlib>
+#include <fstream>
+#include <iomanip>
 #include <numeric>
 #include <random>
 #include <regex>
+#include <sstream>
 using namespace ns3;
 
 NS_LOG_COMPONENT_DEFINE("SDN-KVS-MAIN");
@@ -41,6 +48,62 @@ uint32_t f_tqs_dynamic = 1;
 uint32_t network_latency = 600; // Default: 600ns
 
 static const int request_size = 80;
+std::string handover_stats_prefix;
+std::string controller_rank = "bp-lpt";
+bool data_drop_diagnostics = false;
+uint32_t data_queue_packets = 0;
+std::map<std::pair<std::string, std::string>, uint64_t> data_drops;
+
+static void
+CountDrop(uint64_t* count, Ptr<const Packet>)
+{
+    ++*count;
+}
+
+static void
+CountTableDrop(uint64_t* count, Ptr<const Packet> packet, uint8_t)
+{
+    CountDrop(count, packet);
+}
+
+static void
+CountMeterDrop(uint64_t* count, Ptr<const Packet> packet, uint32_t)
+{
+    CountDrop(count, packet);
+}
+
+static void
+ConfigureDataDevice(Ptr<NetDevice> device, const std::string& label)
+{
+    auto csma = DynamicCast<CsmaNetDevice>(device);
+    if (data_drop_diagnostics)
+    {
+        auto queue = csma->GetQueue();
+        std::cout << "DATA_QUEUE " << label << ',' << queue->GetMaxSize() << '\n';
+        queue->TraceConnectWithoutContext("DropBeforeEnqueue",
+            MakeBoundCallback(&CountDrop, &data_drops[{label, "queue_drop"}]));
+        for (const auto* trace : {"MacTxDrop", "PhyTxDrop", "PhyRxDrop"})
+        {
+            csma->TraceConnectWithoutContext(trace,
+                MakeBoundCallback(&CountDrop, &data_drops[{label, trace}]));
+        }
+    }
+}
+
+static void
+TraceSwitchDrops(Ptr<OFSwitch13Device> device, const std::string& label)
+{
+    if (data_drop_diagnostics)
+    {
+        device->TraceConnectWithoutContext("OverloadDrop",
+            MakeBoundCallback(&CountDrop, &data_drops[{label, "OverloadDrop"}]));
+        device->TraceConnectWithoutContext("TableDrop",
+            MakeBoundCallback(&CountTableDrop, &data_drops[{label, "TableDrop"}]));
+        device->TraceConnectWithoutContext("MeterDrop",
+            MakeBoundCallback(&CountMeterDrop, &data_drops[{label, "MeterDrop"}]));
+    }
+}
+
 /**
  * Global variable
  */
@@ -52,6 +115,29 @@ std::mt19937 gen(1701);
 std::poisson_distribution<> req_siz_possion_rng(request_size);
 Ptr<ParetoRandomVariable> req_siz_rng = CreateObject<ParetoRandomVariable>();
 uint32_t cur_heavy_dst_server = 0;
+
+static void
+TraceHandoverEgress(uint32_t server, Ptr<const Packet> frame)
+{
+    EthernetHeader ethernet(false);
+    Ipv4Header ip;
+    UdpHeader udp;
+    SdnKvsHeader keyset;
+    auto packet = frame->Copy();
+    if (packet->GetSize() <
+            ethernet.GetSerializedSize() + ip.GetSerializedSize() + udp.GetSerializedSize() +
+                keyset.GetSerializedSize() ||
+        !packet->RemoveHeader(ethernet) || ethernet.GetLengthType() != 0x0800 ||
+        !packet->RemoveHeader(ip) || ip.GetProtocol() != 17 ||
+        ip.GetPayloadSize() < udp.GetSerializedSize() + keyset.GetSerializedSize() ||
+        !packet->RemoveHeader(udp) || udp.GetDestinationPort() != server_port ||
+        !packet->PeekHeader(keyset) || keyset.GetId() == 0)
+    {
+        return;
+    }
+    HandoverStats::Get()->Egress(server, keyset.GetReqId(), keyset.GetId(), Simulator::Now());
+}
+
 
 /**
  * Generate destination server id(start from 0) for keyset
@@ -334,8 +420,8 @@ init_request_table(NodeContainer& serverNodes)
             entry.dst_ip = ss.str();
             entry.dst_port = server_port;
             entry.req_id = req_id;
-            entry.ks_siz = ks_siz * 1;
-            entry.bottleneck_ks_size = bottleneck_keyset * 1;
+            entry.ks_siz = ks_siz * 1; // modify by wangkai 小规模场景（8~13均设置为*1）
+            entry.bottleneck_ks_size = bottleneck_keyset * 1; // modify by wangkai 小规模场景（8~13均设置为*1）
             entry.is_heavy = is_heavy;
 
             // Record this entry to the temporary vector
@@ -506,6 +592,8 @@ init_parameter(int argc, char* argv[])
     uint32_t keyset_size_type_index = 0;         // Default: LIGHT
     uint32_t send_time_type_index = 0;           // Default: DYNAMIC
     std::string server_rate_ratio_str = "1:0:0"; // Default: 1:0:0
+    cmd.AddValue("controllerRank", "SDN-KVS controller ranking: bp-lpt, srpt, sbf or central-sbf",
+                 controller_rank);
     cmd.AddValue("algorithm",
                  "Algorithm(0: FIFO, 1: SRPT, 2: SBF, 3: DAS, 4: SDN_KVS)",
                  algorithm_index);
@@ -533,6 +621,17 @@ init_parameter(int argc, char* argv[])
                  key_num);
     cmd.AddValue("tqs_dynamic", "", f_tqs_dynamic);
     cmd.AddValue("network_latency", "", network_latency);
+    cmd.AddValue("dataDropDiagnostics", "Trace drops on data-link devices and switches",
+                 data_drop_diagnostics);
+    cmd.AddValue("dataQueuePackets", "Data-link queue capacity in packets (0 uses defaults)",
+                 data_queue_packets);
+    if (const char* prefix = std::getenv("SDN_KVS_HANDOVER_STATS_PREFIX"))
+    {
+        handover_stats_prefix = prefix;
+    }
+    cmd.AddValue("handoverStatsPrefix",
+                 "Optional output prefix for handover round and summary CSVs",
+                 handover_stats_prefix);
 
     cmd.Parse(argc, argv);
 
@@ -611,6 +710,21 @@ int
 main(int argc, char* argv[])
 {
     init_parameter(argc, argv);
+    if (controller_rank != "bp-lpt" && controller_rank != "srpt" && controller_rank != "sbf" &&
+        controller_rank != "central-sbf")
+    {
+        std::cerr << "Unknown controllerRank " << controller_rank << std::endl;
+        return 1;
+    }
+    if (RngSeedManager::GetSeed() != 1)
+    {
+        // The global Pareto object was initialized before command-line seed parsing.
+        req_siz_rng->SetStream(5000);
+    }
+    std::cout << " - controller_rank = " << controller_rank << std::endl;
+    std::cout << " - rng_seed = " << RngSeedManager::GetSeed() << std::endl;
+    ControllerOverhead::enabled = std::getenv("SDN_KVS_CONTROLLER_OVERHEAD") != nullptr;
+    ControllerOverhead::trace = std::getenv("SDN_KVS_OVERHEAD_TRACE") != nullptr;
 
     // IMPORTANT: CSMA will drop some packets without this line
     Config::SetDefault("ns3::ArpCache::PendingQueueSize", UintegerValue(10000));
@@ -637,13 +751,33 @@ main(int argc, char* argv[])
     // Whether SDN-KVS algorithm is enabled on the controller
     bool enable_sdn_kvs = algorithm.controller_algorithm == ControllerSchedulingType::SDN_KVS;
     controller->SetSdnKvsEnabled(enable_sdn_kvs);
+    if (enable_sdn_kvs && !handover_stats_prefix.empty())
+    {
+        HandoverStats::Enable();
+    }
     controller->SetDebug(debug);
+    controller->SetRanking(controller_rank == "central-sbf" ? Controller::Ranking::CentralSbf :
+                           controller_rank == "srpt" ? Controller::Ranking::Srpt :
+                           controller_rank == "sbf" ? Controller::Ranking::Sbf :
+                                                      Controller::Ranking::BpLpt);
     // Use the CsmaHelper to connect client or server nodes to the switch node
     CsmaHelper csmaHelper;
     csmaHelper.SetChannelAttribute("DataRate", DataRateValue(DataRate("100Gbps")));
     // csmaHelper.SetChannelAttribute("Delay", TimeValue(PicoSeconds(1))); //// wk
     // csmaHelper.SetChannelAttribute("Delay", TimeValue(NanoSeconds(600))); //// wk
     csmaHelper.SetChannelAttribute("Delay", TimeValue(NanoSeconds(network_latency))); //// wk
+    if (data_queue_packets != 0)
+    {
+        const auto capacity = QueueSize(std::to_string(data_queue_packets) + "p");
+        csmaHelper.SetQueue("ns3::DropTailQueue", "MaxSize", QueueSizeValue(capacity));
+        // OFSwitch13 replaces the original CSMA egress queue on switch ports.
+        ObjectFactory switchQueue;
+        switchQueue.SetTypeId("ns3::DropTailQueue<Packet>");
+        switchQueue.Set("MaxSize", QueueSizeValue(capacity));
+        Config::SetDefault("ns3::OFSwitch13PriorityQueue::QueueFactory",
+                           ObjectFactoryValue(switchQueue));
+    }
+
     /*
     [Server][+2.01623s] Server 46(queue_siz=0, update_time=+0s) received SDN-KVS packet(id=25381,
     req_id=3, ks_siz=4, bottleneck_ks_siz=0, queue_siz=0, server_rate=0, heavy=0, server_tqs=0,
@@ -684,6 +818,11 @@ main(int argc, char* argv[])
         Ptr<Node> switchNode = switchNodes.Get(switchId);
         NodeContainer pair(serverNode, switchNode);
         NetDeviceContainer link = csmaHelper.Install(pair);
+        if (HandoverStats::Get())
+        {
+            link.Get(1)->TraceConnectWithoutContext("PhyTxBegin",
+                                                    MakeBoundCallback(&TraceHandoverEgress, i));
+        }
         nodeDevices.Add(link.Get(0)); // Add server node's net device to the vector
         switchNodeDevices[switchId].Add(link.Get(1));
         // Add server node to controller's node map
@@ -708,8 +847,27 @@ main(int argc, char* argv[])
     // Configure the OpenFlow network domain
     Ptr<OFSwitch13InternalHelper> of13Helper = CreateObject<OFSwitch13InternalHelper>();
     of13Helper->InstallController(controllerNode, controller); // Install SDN-KVS Controller
-    of13Helper->InstallSwitch(switchNodes.Get(0), switchNodeDevices[0]);
-    of13Helper->InstallSwitch(switchNodes.Get(1), switchNodeDevices[1]);
+    auto switch0 = of13Helper->InstallSwitch(switchNodes.Get(0), switchNodeDevices[0]);
+    auto switch1 = of13Helper->InstallSwitch(switchNodes.Get(1), switchNodeDevices[1]);
+    if (data_drop_diagnostics)
+    {
+        for (uint32_t i = 0; i < nodeDevices.GetN(); ++i)
+        {
+            ConfigureDataDevice(nodeDevices.Get(i), "host_" + std::to_string(i));
+        }
+        for (uint32_t sw = 0; sw < 2; ++sw)
+        {
+            const auto label = "switch_" + std::to_string(sw);
+            auto& ports = switchNodeDevices[sw];
+            for (uint32_t port = 0; port < ports.GetN(); ++port)
+            {
+                ConfigureDataDevice(ports.Get(port), label +
+                    (port + 1 == ports.GetN() ? "_trunk" : "_port_" + std::to_string(port)));
+            }
+        }
+        TraceSwitchDrops(switch0, "switch_0");
+        TraceSwitchDrops(switch1, "switch_1");
+    }
     of13Helper->CreateOpenFlowChannels();
 
     // Install server application
@@ -760,6 +918,16 @@ main(int argc, char* argv[])
     else
         init_request_table(serverNodes);
     print_request_table();
+    if (enable_sdn_kvs && controller_rank == "central-sbf")
+    {
+        for (const auto& client : req_table)
+        {
+            for (const auto& entry : client.second)
+            {
+                controller->SetRequestBottleneck(entry.req_id, entry.bottleneck_ks_size);
+            }
+        }
+    }
     // Install client application
     ClientHelper clientHelper(req_table, algorithm, debug);
     clientHelper.Install(clientNodes);
@@ -767,6 +935,42 @@ main(int argc, char* argv[])
     // Run the simulation
     Simulator::Stop(Seconds(simTime));
     Simulator::Run();
+    for (const auto& [source, count] : data_drops)
+    {
+        std::cout << "DATA_DROP " << source.first << ',' << source.second << ',' << count << '\n';
+    }
+    if (ControllerOverhead::enabled)
+    {
+        const auto elapsed = std::chrono::duration<double, std::milli>(ControllerOverhead::duration);
+        std::ostringstream record;
+        record << std::setprecision(17) << "CONTROLLER_OVERHEAD "
+               << server_tqs << ',' << f_tqs_dynamic << ',' << elapsed.count() << ','
+               << ControllerOverhead::calls << ',' << ControllerOverhead::overload << ','
+               << ControllerOverhead::redirect << ',' << ControllerOverhead::restore << ','
+               << tot_request_num;
+        std::cout << record.str() << std::endl;
+    }
+    if (auto* stats = HandoverStats::Get())
+    {
+        std::ofstream rounds(handover_stats_prefix + "_rounds.csv");
+        std::ofstream summary(handover_stats_prefix + "_summary.csv");
+        std::ostringstream summaryText;
+        stats->Write(rounds, summaryText, server_num, Simulator::Now());
+        summary << summaryText.str();
+        rounds.close();
+        summary.close();
+        if (!rounds || !summary)
+        {
+            std::cerr << "Failed to write handover CSVs with prefix " << handover_stats_prefix
+                      << std::endl;
+            Simulator::Destroy();
+            return 1;
+        }
+        std::cout << "=== Handover idle summary (CSV) ===\n"
+                  << summaryText.str()
+                  << "Handover rounds CSV: " << handover_stats_prefix << "_rounds.csv\n"
+                  << "=== End handover idle summary ===" << std::endl;
+    }
     Simulator::Destroy();
 
     return 0;

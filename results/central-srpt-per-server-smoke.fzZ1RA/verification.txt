@@ -1,0 +1,3 @@
+scene 8 requests 378 unique_forwarded_keysets 731 {'same_size_orderings': 342, 'ranking_rounds': 731, 'cross_server_larger_before_smaller': 114}
+scene 9 requests 378 unique_forwarded_keysets 823 {'same_size_orderings': 5362, 'ranking_rounds': 823, 'cross_server_larger_before_smaller': 141}
+Each destination followed its own size/arrival order and service interval. Different destinations forwarded independently.
