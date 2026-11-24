@@ -1,5 +1,7 @@
 #include "server.h"
 
+#include "controller-overhead.h"
+#include "handover-stats.h"
 #include "sdn-kvs-header.h"
 
 #include "ns3/address-utils.h"
@@ -195,6 +197,13 @@ Server::HandleRead(Ptr<Socket> socket)
 
         SdnKvsHeader sdnKvsHeader;
         packet->PeekHeader(sdnKvsHeader);
+        if (auto* stats = HandoverStats::Get(); stats && m_sdn_kvs_enabled)
+        {
+            stats->Arrive(m_server_id,
+                          sdnKvsHeader.GetReqId(),
+                          sdnKvsHeader.GetId(),
+                          Simulator::Now());
+        }
         std::stringstream ss;
         sdnKvsHeader.Print(ss);
         if (InetSocketAddress::IsMatchingType(from))
@@ -341,7 +350,10 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
             hdr.SetServerRate(m_server_rate);
             hdr.SetServerTqs(m_tqs_dynamic);
             pkt->AddHeader(hdr);
-            socket->SendTo(pkt, 0, from);
+            if (socket->SendTo(pkt, 0, from) >= 0)
+            {
+                ControllerOverhead::Record(ControllerOverhead::overload, "overload");
+            }
             // Server overloaded, send signal packet to SDN controller
             std::cout << "[Server][" << Simulator::Now().As(Time::S) << "] Server " << m_server_id
                       << " is overloaded, set heavy field to 1"
@@ -363,7 +375,10 @@ Server::HandlePacket(Ptr<Packet> packet, Ptr<Socket> socket, Address from)
         hdr.SetServerRate(m_server_rate);
         hdr.SetServerTqs(m_tqs);
         pkt->AddHeader(hdr);
-        socket->SendTo(pkt, 0, from);
+        if (socket->SendTo(pkt, 0, from) >= 0)
+        {
+            ControllerOverhead::Record(ControllerOverhead::overload, "overload");
+        }
     }
     sdnKvsHeader.SetQueueSiz(m_queue_size);
     sdnKvsHeader.SetServerRate(m_server_rate);
@@ -410,6 +425,13 @@ Server::SendPacket(Ptr<Socket> socket, Ptr<Packet> packet, Address& from)
 {
     SdnKvsHeader sdnKvsHeader;
     packet->RemoveHeader(sdnKvsHeader);
+    if (auto* stats = HandoverStats::Get(); stats && m_sdn_kvs_enabled)
+    {
+        stats->Complete(m_server_id,
+                        sdnKvsHeader.GetReqId(),
+                        sdnKvsHeader.GetId(),
+                        Simulator::Now());
+    }
     if (!m_srpt_enabled && !m_sbf_enabled && m_lst > 0)
     {
         // Update queue size if the queue is not empty(and SRPT/sbf algorithm is disabled)

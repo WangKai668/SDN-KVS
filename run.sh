@@ -96,8 +96,10 @@ else
 fi
 echo "latency = ${latency}ns"
 
-./ns3 configure -d optimized 2>&1 >/dev/null
-./ns3 build > output.log 2>&1
+if [[ "${SDN_KVS_CONTROLLER_OVERHEAD:-}" != 1 ]]; then
+    ./ns3 configure -d optimized 2>&1 >/dev/null
+    ./ns3 build > output.log 2>&1
+fi
 
 output_file="${SDN_KVS_RESULTS_DIR}/output_c${client_num}_s${server_num}_k${key_num}_r${server_rate_ratio}_x${distribution_type}_y${keyset_size_type}_z${send_time_type}_u${uti}_a${algorithm}_q${server_tqs}_l${latency}"
 
@@ -106,12 +108,68 @@ if [ "$ifZipfian" = true ]; then
 fi
 output_file="${output_file}.log"
 
+handover_prefix=""
+if [[ "$algorithm" == 4 && "${SDN_KVS_HANDOVER_STATS:-0}" == 1 ]]; then
+    handover_prefix="${output_file%.log}_handover"
+fi
+
 if [ "$server_tqs" = "999" ]; then
     tqs_dynamic=1
 fi
 
+simulation="scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --send_time_type=${send_time_type} --uti=${uti} --simTime=${simTime} --server_rate_ratio=${server_rate_ratio} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num} --tqs_dynamic=${tqs_dynamic} --network_latency=${latency}"
+if [[ -n "${SDN_KVS_DATA_QUEUE_PACKETS:-}" ]]; then
+    if [[ ! "$SDN_KVS_DATA_QUEUE_PACKETS" =~ ^[0-9]+$ ]]; then
+        printf 'Invalid packet count in SDN_KVS_DATA_QUEUE_PACKETS\n' >&2
+        exit 2
+    fi
+    simulation+=" --dataQueuePackets=$SDN_KVS_DATA_QUEUE_PACKETS"
+fi
+if [[ "${SDN_KVS_DATA_DROP_DIAGNOSTICS:-}" == 1 ]]; then
+    simulation+=" --dataDropDiagnostics=1"
+fi
+if [[ "${SDN_KVS_CONTROLLER_OVERHEAD:-}" == 1 ]]; then
+    run_id="${SDN_KVS_OVERHEAD_RUN_ID:?Run ID required in controller overhead mode}"
+    output_file="${output_file%.log}_run${run_id}.log"
+    if [[ -n "${SDN_KVS_STUDY:-}" ]]; then
+        seed="${SDN_KVS_STUDY_SEED:?}"
+        rank="${SDN_KVS_STUDY_RANK:-bp-lpt}"
+        simulation+=" --RngSeed=$seed --controllerRank=$rank"
+        output_file="${output_file%.log}_seed${seed}_${rank}.log"
+        printf '%s,%s,%s,%s,%s,%s,%s,%s,%s\n' "$SDN_KVS_STUDY" "$SDN_KVS_BATCH_SCENE" \
+            "$algorithm" "$server_tqs" "$latency" "$run_id" "$seed" "$rank" "${output_file##*/}" \
+            >> "$SDN_KVS_RESULTS_DIR/study_manifest.csv" || exit 1
+    fi
+    if [[ "$algorithm" == 4 && "${SDN_KVS_HANDOVER_STATS:-0}" == 1 ]]; then
+        handover_prefix="${output_file%.log}_handover"
+    fi
+    measure=""
+    if [[ "$algorithm" == 4 ]]; then
+        measure=1
+    fi
+    if [[ -n "${SDN_KVS_BATCH_ROOT:-}" ]]; then
+        printf '%s,%s,%s,%s,scene_%s/%s\n' "$SDN_KVS_BATCH_SCENE" "$algorithm" "$server_tqs" \
+            "$run_id" "$SDN_KVS_BATCH_SCENE" "${output_file##*/}" >> "$SDN_KVS_BATCH_ROOT/run_manifest.csv" || exit 1
+    fi
+    printf 'SDN_KVS_CONTROLLER_OVERHEAD=%q SDN_KVS_HANDOVER_STATS_PREFIX=%q ./ns3 run --no-build %q\n' \
+        "$measure" "$handover_prefix" "$simulation" > "${output_file%.log}.command"
+    if [[ -z "$measure" ]]; then
+        printf 'env -u SDN_KVS_CONTROLLER_OVERHEAD ./ns3 run --no-build %q\n' \
+            "$simulation" > "${output_file%.log}.command"
+    fi
+    if [[ -n "$measure" ]]; then
+        SDN_KVS_HANDOVER_STATS_PREFIX="$handover_prefix" ./ns3 run --no-build "$simulation" > "$output_file" 2>&1
+        status=$?
+    else
+        env -u SDN_KVS_CONTROLLER_OVERHEAD ./ns3 run --no-build "$simulation" > "$output_file" 2>&1
+        status=$?
+    fi
+    printf '%s\n' "$status" > "${output_file%.log}.exit"
+    exit "$status"
+fi
+
 (
-    ./ns3 run "scratch/sdn-kvs/sdn-kvs-main --algorithm=${algorithm} --debug=${debug} --ifZipfian=${ifZipfian} --distribution_type=${distribution_type} --keyset_size_type=${keyset_size_type} --send_time_type=${send_time_type} --uti=${uti} --simTime=${simTime} --server_rate_ratio=${server_rate_ratio} --server_tqs=${server_tqs} --client_num=${client_num} --server_num=${server_num} --key_num=${key_num} --tqs_dynamic=${tqs_dynamic} --network_latency=${latency}" > "$output_file" 2>&1 
+    SDN_KVS_HANDOVER_STATS_PREFIX="$handover_prefix" ./ns3 run "$simulation" > "$output_file" 2>&1
     # if [ $? -eq 0 ]; then
     #     python3 ./analysis.py "$output_file"
     # fi

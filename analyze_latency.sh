@@ -1,3 +1,11 @@
+if [[ "${1:-}" == --study ]]; then
+    if [[ $# != 2 ]]; then
+        printf 'Expected --study RESULTS_DIRECTORY\n' >&2
+        exit 2
+    fi
+    exec python3.12 analyze_sdn_kvs_study.py "$2"
+fi
+
 SDN_KVS_RESULTS_DIR="${SDN_KVS_RESULTS_DIR:-/mnt/nasDisk_ds3617/wangkai/SDN-KVS}"
 if [[ ! -d "$SDN_KVS_RESULTS_DIR" ]]; then
     printf '结果目录不存在 %s\n' "$SDN_KVS_RESULTS_DIR" >&2
